@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools >= 61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "condevo"
+version = "0.1.0"
+authors = [
+    { name="Ben Hartl", email="hartl.bene.software@gmail.com" },
+    { name="Yanbo Zhang", email="zhangybspm@gmail.com" },
+    { name="Hananel Hazan", email="hananel@Hazan.org.il" },
+]
+description = "A heuristically adaptive, diffusion-model framework for conditionable evolutionary strategies."
+readme = "README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Evolutionary Computing",
+    "Topic :: Scientific/Engineering :: Artificial Life",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = [
+    "torch >= 2.0",
+    "numpy",
+    "scipy",
+    "tqdm",
+    "cma ~= 3.3.0",
+]
+
+[project.optional-dependencies]
+examples = [
+    "argh",
+    "h5py",
+    "pandas",
+    "matplotlib",
+    "jupyter",
+]
+
+conditional = [
+    "foobench",
+]
+
+gym = [
+    "mindcraft",
+]
+
+[tool.setuptools]
+py-modules = ["condevo"]

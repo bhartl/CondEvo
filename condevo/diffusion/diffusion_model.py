@@ -55,10 +55,10 @@ class DM(Module):
 
         if (x_source is None) and (num is not None):
             x_source = randn(num, *shape)
-
+        
         if conditions is None:
             conditions = tuple()
-            
+
         sample_vectorized = vmap(self.sample_point, randomness='different')
         x_sampled = sample_vectorized(x_source, *conditions, t_start=t_start)
         return x_sampled
@@ -145,6 +145,7 @@ class DM(Module):
         for _ in tqdm(range(int(max_epoch))):
             batch_loss = 0
             for x_batch, *c_batch, w_batch in training_dataloader:
+                w_batch = w_batch.to(x_batch.device)
                 optimizer.zero_grad()
                 v, v_pred = self.eval_val_pred(x_batch, *c_batch)
                 loss = loss_function(v, v_pred) * w_batch

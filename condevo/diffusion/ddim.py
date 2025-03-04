@@ -1,5 +1,5 @@
 from torch import tensor, ones, rand, randn_like, cat, linspace, sqrt
-from condevo.diffusion import DM
+from ..diffusion import DM
 
 
 class DDIM(DM):
@@ -53,7 +53,7 @@ class DDIM(DM):
             x0 (torch.tensor): Input tensor to be diffused.
             t (torch.tensor): Time step for the diffusion process, ranging from 0 to 1.
         """
-        eps = randn_like(x0)
+        eps = randn_like(x0, device=x0.device)
         if isinstance(t, float):
             t = tensor(t)
         T = (t * (self.num_steps - 1)).long()
@@ -69,14 +69,14 @@ class DDIM(DM):
         if t_start is None:
             t_start = self.num_steps - 1  # avoid the first step, special alpha[T] value
 
-        xt = xt.unsqueeze(0)
+        xt = xt.unsqueeze(0).to(self.alpha.device)
         conditions = tuple(c.unsqueeze(0) for c in conditions)
-        one = ones(1, 1)
+        one = ones(1, 1, device=xt.device)
 
         for T in range(t_start - 1, 0, -1):
             t = one * T / self.num_steps
             s = self.sigma[T] * self.noise_level
-            z = randn_like(xt)
+            z = randn_like(xt, device=xt.device)
 
             eps = self(xt, t, *conditions)
             x0_pred = (xt - (1-self.alpha[T]).sqrt() * eps) / self.alpha[T].sqrt()
@@ -86,7 +86,7 @@ class DDIM(DM):
         return xt.squeeze(0)
 
     def eval_val_pred(self, x, *conditions):
-        t = rand(x.shape[0]).reshape(-1, 1)
+        t = rand(x.shape[0], device=x.device).reshape(-1, 1)
         xt, eps = self.diffuse(x, t)
         eps_pred = self.forward(xt, t, *conditions)
         return eps, eps_pred        
@@ -95,7 +95,7 @@ class DDIM(DM):
         # regularize the denoising steps
         if self.param_range is not None:
             # random time steps for the diffusion process
-            t = rand(x_batch.shape[0]).reshape(-1, 1)
+            t = rand(x_batch.shape[0], device=x_batch.device).reshape(-1, 1)
             T = (t * (self.num_steps - 1)).long()
 
             # apply diffusion and predict the noise

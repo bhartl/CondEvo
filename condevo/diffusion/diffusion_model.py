@@ -56,6 +56,9 @@ class DM(Module):
         if (x_source is None) and (num is not None):
             x_source = randn(num, *shape)
 
+        if conditions is None:
+            conditions = tuple()
+            
         sample_vectorized = vmap(self.sample_point, randomness='different')
         x_sampled = sample_vectorized(x_source, *conditions, t_start=t_start)
         return x_sampled

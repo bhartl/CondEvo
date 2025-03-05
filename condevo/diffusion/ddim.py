@@ -5,7 +5,7 @@ from ..diffusion import DM
 class DDIM(DM):
     """ DDIM: Denoising Diffusion Implicit Model """
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
-                 param_range=None, lambda_range=0., predict_eps_t=False):
+                 param_range=None, lambda_range=0., predict_eps_t=False, device='cpu'):
         """ Initialize the DDIM model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
@@ -30,8 +30,8 @@ class DDIM(DM):
     def _init_DDIM(self):
         """ Initialize the DDIM parameters """
         # alpha[0] = 1, fully denoised; alpha[-1] = 0, fully noised
-        self.alpha = linspace(1 - 1 / self.num_steps, 1e-8, self.num_steps)
-        a = cat([tensor([1]), self.alpha])
+        self.alpha = linspace(1 - 1 / self.num_steps, 1e-8, self.num_steps, device=self.device)
+        a = cat([tensor([1], device=self.device), self.alpha])
         self.sigma = (1 - a[:-1]) / (1 - a[1:]) * (1 - a[1:] / a[:-1])
         self.sigma = sqrt(self.sigma)
     
@@ -56,9 +56,9 @@ class DDIM(DM):
         eps = randn_like(x0, device=x0.device)
         if isinstance(t, float):
             t = tensor(t)
-        T = (t * (self.num_steps - 1)).long()
-        eps_t = (1 - self.alpha[T]).sqrt() * eps 
-        xt = self.alpha[T].sqrt() * x0 + eps_t
+        T = (t * (self.num_steps - 1)).long().cpu()
+        eps_t = (1 - self.alpha[T].to(x0.device)).sqrt() * eps 
+        xt = self.alpha[T].to(x0.device).sqrt() * x0 + eps_t
         if self.predict_eps_t:
             eps_t = xt - x0
             return xt, eps_t

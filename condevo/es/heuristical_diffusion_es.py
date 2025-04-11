@@ -49,6 +49,7 @@ class HADES:
                  eps: float = 1e-12,
                  buffer_size: int = 4,
                  training_interval: int = 1,
+                 diversity_selection: bool = False,
                  ):
         """ Constructs a SHADES optimizer.
 
@@ -83,7 +84,7 @@ class HADES:
         :param unbiased_mutation_ratio: float, ratio of the population that is mutated without applying the diffusion,
                                         while no mutations with diffusion are applied to any subset of the population.
                                         If this value is non-zero, a total of `popsize * unbiased_mutation_ratio`
-                                        individuals are mutated, where for each individual, `model.num_steps * mutation_rate`
+                                        individuals are mutated, where for each individual, `num_parameters * mutation_rate`
                                         genes are mutated by Gaussian noise of scale `sigma_init`.
                                         This option is compatible with `readaptation`.
         :param readaptation: bool, whether to refine the mutated samples by applying denoising for
@@ -102,6 +103,7 @@ class HADES:
         :param to_numpy: bool, whether to return the solutions as numpy arrays
         :param buffer_size: int, size of the buffer to store the solutions, fitness and probabilities for training the diffusion model.
         :param training_interval: int, number of sampled generations between retraining the diffusion model.
+        :param diversity_selection: bool, whether to use diversity selection for updating the buffer for the diffusion model training.
         """
 
         self.num_params = num_params
@@ -152,6 +154,7 @@ class HADES:
 
         self.buffer = {}
         self.buffer_size = buffer_size
+        self.diversity_selection = diversity_selection
 
         self.training_interval = training_interval
         self._asked = 0
@@ -404,31 +407,7 @@ class HADES:
         """ Perform roulette_wheel selection step of current population data. """
         x = self.solutions
         fitness = self.fitness
-
-        if "x" not in self.buffer:
-            # initialize buffer
-            self.buffer['x'] = x.clone()
-            self.buffer['fitness'] = fitness.clone()
-
-        else:
-            # update buffer
-            if self.buffer['x'].shape[0] >= self.buffer_size * self.popsize:
-                # remove nan values from buffer
-                is_nan = torch.isnan(self.buffer['fitness'])
-                num_nan = torch.sum(is_nan)
-                if num_nan:
-                    self.buffer['x'] = self.buffer['x'][~is_nan]
-                    self.buffer['fitness'] = self.buffer['fitness'][~is_nan]
-
-                # remove old samples from buffer with the lowest fitness
-                num_replace = self.popsize - num_nan
-                indices = self.buffer['fitness'].flatten().argsort()
-                self.buffer['x'] = self.buffer['x'][indices[num_replace:]]
-                self.buffer['fitness'] = self.buffer['fitness'][indices[num_replace:]]
-
-            # add new samples to tail of buffer
-            self.buffer['x'] = torch.cat((self.buffer['x'], x), dim=0)
-            self.buffer['fitness'] = torch.cat((self.buffer['fitness'], fitness), dim=0)
+        self.update_buffer(x, fitness)
 
         # get buffer dataset
         x_dataset = self.buffer['x'].clone()
@@ -457,6 +436,54 @@ class HADES:
             weights_dataset = weights_dataset / weights_dataset.max()
 
         return x_dataset, weights_dataset
+
+    def update_buffer(self, x, fitness):
+        if "x" not in self.buffer:
+            # initialize buffer
+            self.buffer['x'] = x.clone()
+            self.buffer['fitness'] = fitness.clone()
+
+        else:
+            # update buffer
+            if self.buffer['x'].shape[0] >= self.buffer_size * self.popsize:
+                # remove nan values from buffer
+                is_nan = torch.isnan(self.buffer['fitness'])
+                num_nan = torch.sum(is_nan)
+                if num_nan:
+                    self.buffer['x'] = self.buffer['x'][~is_nan]
+                    self.buffer['fitness'] = self.buffer['fitness'][~is_nan]
+
+                if not self.diversity_selection:
+                    # remove old samples from buffer with the lowest fitness
+                    num_replace = self.popsize - num_nan
+                    indices = self.buffer['fitness'].flatten().argsort()
+                    self.buffer['x'] = self.buffer['x'][indices[num_replace:]]
+                    self.buffer['fitness'] = self.buffer['fitness'][indices[num_replace:]]
+                    self.buffer['replaced'] = indices[:num_replace]
+
+                else:
+                    # replace novel samples by maximizing the diversity of the buffer
+                    indices = []
+                    for xi, fi in zip(x, fitness):
+                        # find the most similar sample in the buffer
+                        distances = torch.cdist(xi.reshape(1, -1), self.buffer['x']).flatten()
+                        # get the index of the most similar sample
+                        for index in distances.argsort():
+                            # replace the most similar sample with the new sample, if it is better
+                            if self.buffer['fitness'][index] < fi and index not in indices:
+                                # replace the sample in the buffer
+                                self.buffer['x'][index] = xi
+                                self.buffer['fitness'][index] = fi
+                                indices += [index]
+                                break
+
+                    self.buffer['replaced'] = torch.tensor(indices)
+
+                population_diversity = torch.cdist(self.buffer['x'], self.buffer['x']).flatten()
+
+            # add new samples to tail of buffer
+            self.buffer['x'] = torch.cat((self.buffer['x'], x), dim=0)
+            self.buffer['fitness'] = torch.cat((self.buffer['fitness'], fitness), dim=0)
 
     def train_model(self, dataset, weights=None):
         """ Train the diffusion model on the given dataset.

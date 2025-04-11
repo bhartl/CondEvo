@@ -3,7 +3,7 @@
 see: https://www.gymlibrary.dev/environments/mujoco/humanoid/
 """
 
-from examples.gym.experiments import ABCExperiment
+from . import ABCExperiment
 
 
 class MujocoHumanoid(ABCExperiment):

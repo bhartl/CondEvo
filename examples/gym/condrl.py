@@ -155,6 +155,83 @@ def rollout(experiment: str ="Cartpole", experiment_config: str = "DEFAULT", con
     return run(config=mindcraft_config)
 
 
+def progress(experiment: str ="Cartpole", experiment_config: str = "DEFAULT", conditions=None,
+             diff: str = "DDIM", es: str = "HADES", n_episodes: int = 10, timestamp: Optional[str] = None, **kwargs):
+
+    experiment_module = import_experiment(experiment)
+    experiment_config = utils.load_experiment(experiment_config)
+    conditions = utils.load_file(conditions) if (es == "CHARLES" and conditions) else {}
+    experiment = experiment_module.load(experiment_config, conditions=conditions)
+    experiment.env_kwargs["gym_kwargs"] = {**experiment.env_kwargs.get("gym_kwargs", {}), **{"render_mode": "human"}}
+    agent = experiment.get_agent_file(diff_instance=diff, es=es, timestamp=timestamp)
+
+    from mindcraft.train import EvolutionaryStrategy
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    log_file = agent.replace(".yml", ".log")
+    if not os.path.exists(log_file):
+        raise FileNotFoundError(log_file)
+
+    runs = EvolutionaryStrategy.load_log(log_file, to_pandas=True)
+    print(f"Accessing Log-File `{log_file}`")
+    print(f"History: {len(runs)} runs, {len([r for r in runs if r['tail'] != []])} of them finished")
+
+    p_start = 0
+    best = []
+    cost = []
+    mean = []
+    std = []
+    steps = []
+    boosts = []
+    for i in range(len(runs)):
+        data = runs[i]['data']
+        if not len(data):
+            continue
+
+        best.append(data['best'])
+        cost.append(data['cost'])
+        mean.append(data['mean'])
+        std.append(data['std'])
+        steps.append(data['step'] + p_start)
+
+        boosts.append(max(data['step']))
+        p_start += boosts[-1] + 1
+
+    best = np.concatenate(best)
+    cost = np.concatenate(cost)
+    mean = np.concatenate(mean)
+    std = np.concatenate(std)
+    steps = np.concatenate(steps)
+
+    plt.figure(figsize=(15, 5))
+    ax = plt.gca()
+
+    # plot_foo(steps, mean, label='mean')
+    plt.plot(steps, best, label='Hist. Fittest', zorder=2, linewidth=2)
+    plt.fill_between(steps, cost, best, label='Current Fittest', zorder=3, alpha=0.5)
+    plt.plot(steps, mean, color="black", zorder=1, label="Pop. Mean", linewidth=2)
+    plt.fill_between(steps, mean-std, np.minimum(best, mean+std), zorder=3, alpha=0.5, color="gray", label="Pop. Std.")
+
+    ax.set_xlim([1, max(steps)])
+
+    d_min = min([min(mean), min(cost)])
+    d_max = max([max(best), max(cost)])
+    offset = 0.05 * (d_max - d_min)
+
+    # for b in np.cumsum(boosts):
+    #     plot_foo([b, b], [d_min - offset, d_max + offset], 'k--')
+    ax.set_ylim([d_min - offset, d_max + offset])
+
+    ax.set_xlabel('Generations')
+    ax.set_ylabel('Return (Cumulative Reward)')
+
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+
 def demo(experiment: str ="Cartpole", experiment_config: str = "DEFAULT",):
     """ Run a simple demo """
     experiment_module = import_experiment(experiment)
@@ -170,9 +247,17 @@ def demo(experiment: str ="Cartpole", experiment_config: str = "DEFAULT",):
         env.render()
 
 
-def run(config, method="train"):
+def run(config, method="train", timestamp=None):
     config = utils.load_file(config)
     method = globals()[method]
+    if timestamp:
+        config["timestamp"] = timestamp
+
+    if config["es"] not in ("HADES", "CHARLES"):
+        print(f"Assuming diff {config['es']}")
+        config["diff"] = config["es"]
+        config["es"] = "mindcraft"
+
     return method(**config)
 
 

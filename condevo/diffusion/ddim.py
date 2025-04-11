@@ -5,7 +5,7 @@ from condevo.diffusion import DM
 class DDIM(DM):
     """ DDIM: Denoising Diffusion Implicit Model """
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
-                 param_range=None, lambda_range=0., predict_eps_t=False):
+                 param_range=None, lambda_range=0., predict_eps_t=False, sigma_zero=1.0):
         """ Initialize the DDIM model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
@@ -18,7 +18,8 @@ class DDIM(DM):
                               or the total noise `eps` as if `t==T` for a given `xt`. Defaults to False (total noise).
         """
         # call the base class constructor, sets nn and num_steps attributes
-        super(DDIM, self).__init__(nn=nn, num_steps=num_steps, param_range=param_range, lambda_range=lambda_range)
+        super(DDIM, self).__init__(nn=nn, num_steps=num_steps, param_range=param_range, lambda_range=lambda_range,
+                                   sigma_zero=sigma_zero)
         self.skip_connection = skip_connection
 
         # DDIM parameters
@@ -46,21 +47,25 @@ class DDIM(DM):
         else:
             return y
 
-    def diffuse(self, x0, t):
-        """Diffuse the input tensor `x0` with noise at time `t`
+    def diffuse(self, x, t):
+        """Diffuse the input tensor `x` with noise at time `t`
         
         Args:
-            x0 (torch.tensor): Input tensor to be diffused.
+            x (torch.tensor): Input tensor to be diffused.
             t (torch.tensor): Time step for the diffusion process, ranging from 0 to 1.
+
+        Returns:
+            tuple: Diffused tensor `xt` and the totoal noise `eps`.
+                   In case of `self.predict_eps_t`, the returned noise is the actual noise `eps_t` at time `t`.
         """
-        eps = randn_like(x0)
+        eps = randn_like(x) * self.sigma_zero
         if isinstance(t, float):
             t = tensor(t)
         T = (t * (self.num_steps - 1)).long()
         eps_t = (1 - self.alpha[T]).sqrt() * eps 
-        xt = self.alpha[T].sqrt() * x0 + eps_t
+        xt = self.alpha[T].sqrt() * x + eps_t
         if self.predict_eps_t:
-            eps_t = xt - x0
+            eps_t = xt - x
             return xt, eps_t
         return xt, eps
 
@@ -93,7 +98,7 @@ class DDIM(DM):
 
     def regularize(self, x_batch, w_batch, *c_batch):
         # regularize the denoising steps
-        if self.param_range is not None:
+        if self.param_range is not None and self.lambda_range:
             # random time steps for the diffusion process
             t = rand(x_batch.shape[0]).reshape(-1, 1)
             T = (t * (self.num_steps - 1)).long()

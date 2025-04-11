@@ -1,20 +1,14 @@
-<<<<<<<< HEAD:examples/gym/config/cartpole_charles.yml
 experiment: Cartpole
+new_model: True
+timestamp: True
 experiment_config:
   agent: "FF"
-========
-experiment: MujocoAnt
-timestamp: true
-experiment_config:
-  agent: "GRU"
->>>>>>>> origin/main:examples/gym/config/mujoco_ant.yml
   agent_kwargs:
     num_hidden: 6
     num_layers: 1
   world_kwargs:
     n_episodes: 8
     log_fields: []
-    new_model: True
 es: CHARLES
 conditions:
   fitness_condition:                 # generate offspring conditional to fitness
@@ -44,14 +38,10 @@ diff: DDIM
 diff_config:
   num_steps: 1000
   noise_level: 0.05
+  param_range: 100
 nn: MLP
 nn_config:
   num_hidden: 64
   num_layers: 2
-<<<<<<<< HEAD:examples/gym/config/cartpole_charles.yml
   activation: ReLU
   batch_norm: True
-========
-  activation: ELU
-  # batch_norm: True
->>>>>>>> origin/main:examples/gym/config/mujoco_ant.yml

@@ -1,28 +1,18 @@
-experiment: MujocoAnt
-timestamp: True
+experiment: MujocoSwimmer
 new_model: True
+timestamp: True
 experiment_config:
-#  agent: "GRU"
-#  agent_kwargs:
-#    num_hidden: 16
-#    num_layers: 1
-  agent: "QKV"
+  agent: "FF"
   agent_kwargs:
-    action_foldback: True
-    pos_embedding: False
-    projection_size: 8
-    embedding_size: 4
-    query_size: 8
-    context_size: 8
-    num_heads: 4
-    hidden_size: 16
+    num_hidden: 6
+    num_layers: 2
   world_kwargs:
-    n_episodes: 8
+    n_episodes: 3
     log_fields: ["reward", "done", "observation"]
 es: HADES
-generations: 500
+generations: 200
 es_config:
-  popsize: 256
+  popsize: 128
   is_genetic_algorithm: False
   selection_pressure: 18.0           # selection pressure for roulette wheel selection
   adaptive_selection_pressure: False # whether to adapt the selection pressure
@@ -40,6 +30,7 @@ es_config:
   diff_max_epoch: 300                # DM: number of training steps for the diffusion model at each generation
   diff_continuous_training: False    # DM: continuous training, or retrain diffusion model at each generation
   buffer_size: 8
+  diversity_selection: True
 diff: DDIM
 diff_config:
   num_steps: 1000
@@ -50,4 +41,4 @@ nn_config:
   num_hidden: 128
   num_layers: 2
   activation: ELU
-  batch_norm: True
+  # batch_norm: True

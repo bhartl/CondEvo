@@ -235,7 +235,7 @@ class CHARLES(HADES):
                 else:
                     # replace novel samples by maximizing the diversity of the buffer
                     indices = []
-                    for xi, fi, ci in zip(x, fitness, conditions):
+                    for xi, fi, *ci in zip(x, fitness, *conditions):
                         # find the most similar sample in the buffer
                         distances = torch.cdist(xi.reshape(1, -1), self.buffer['x']).flatten()
                         # get the index of the most similar sample
@@ -245,9 +245,9 @@ class CHARLES(HADES):
                                 # replace the sample in the buffer
                                 self.buffer['x'][index] = xi
                                 self.buffer['fitness'][index] = fi
-                                for i in range(len(self.buffer['conditions'])):
+                                for j in range(len(self.buffer['conditions'])):
                                     # replace the condition in the buffer
-                                    self.buffer['conditions'][i][index] = ci
+                                    self.buffer['conditions'][j][index] = ci[j]
 
                                 indices += [index]
                                 break

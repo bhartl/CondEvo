@@ -256,7 +256,6 @@ def run(config, method="train", timestamp=None):
     if config["es"] not in ("HADES", "CHARLES"):
         print(f"Assuming diff {config['es']}")
         config["diff"] = config["es"]
-        config["es"] = "mindcraft"
 
     return method(**config)
 

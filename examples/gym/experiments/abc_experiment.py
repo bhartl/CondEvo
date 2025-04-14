@@ -235,7 +235,7 @@ class ABCExperiment:
     def get_agent_file(self, diff_instance, es, timestamp=None):
         if diff_instance is None:
             diff = es
-            es = "mindcraft"
+            es = es
         elif not isinstance(diff_instance, str):
             diff = diff_instance.__class__.__name__
         else:

@@ -3,17 +3,20 @@ from condevo.diffusion import DM
 
 
 class RectFlow(DM):
-    """ Rectified Flow model for condevo package. """
+    """ Rectified Flow model for `condevo` package. """
 
-    def __init__(self, nn, num_steps=100, param_range=None, lambda_range=0., sigma_zero=1.0):
+    def __init__(self, nn, num_steps=100, param_range=None, lambda_range=0., sigma_zero=1.0, matthew_factor=0.5,):
         """ Initialize the RectFlow model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
         :param num_steps: int, Number of steps for the diffusion model. Defaults to 100.
         :param param_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
+        :param sigma_zero: float, Initial noise level for the diffusion model. Defaults to 1.0.
+        :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.5.
         """
         super(RectFlow, self).__init__(nn=nn, num_steps=num_steps, param_range=param_range, lambda_range=lambda_range, sigma_zero=sigma_zero)
+        self.matthew_factor = matthew_factor
 
     def interpolate(self, x1, t):
         # Note: different from DDPM or DDIM, x1~data, and x0~noise
@@ -33,7 +36,7 @@ class RectFlow(DM):
 
         for T in range(t_start, self.num_steps):
             t = ones(1) * T / self.num_steps
-            v = self(xt, t, *conditions)
+            v = self(xt, t, *conditions) * self.matthew_factor
             xt = xt + v * (1 / self.num_steps)
 
         return xt

@@ -1,21 +1,28 @@
-from torch import tensor, ones, rand, randn_like, cat, linspace, sqrt
+from torch import tensor, ones, rand, randn_like, cat, linspace, sqrt, cos, pi
 from condevo.diffusion import DM
 
 
 class DDIM(DM):
-    """ DDIM: Denoising Diffusion Implicit Model """
+    """ DDIM: Denoising Diffusion Implicit Model for the `condevo` package. """
+
+    ALPHA_SCHEDULES = ["linear", "cosine", ]
+
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
-                 param_range=None, lambda_range=0., predict_eps_t=False, sigma_zero=1.0):
+                 param_range=None, lambda_range=0., predict_eps_t=False, sigma_zero=1.0,
+                 alpha_schedule="linear", matthew_factor=0.5,
+                 ):
         """ Initialize the DDIM model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
         :param num_steps: int, Number of steps for the diffusion model. Defaults to 100.
-        :param skip_connection: bool, Using skip connections for the diffusion model. Defaults to True.
+        :param skip_connection: bool, Using skip connections for the diffusion model error estimate. Defaults to True.
         :param noise_level: float, Noise level for the diffusion model. Defaults to 1.0.
         :param param_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
         :param predict_eps_t: bool, Whether to predicting the noise `eps_t` for a given `xt` and `t`, or
                               or the total noise `eps` as if `t==T` for a given `xt`. Defaults to False (total noise).
+        :param alpha_schedule: str, Schedule for the alpha parameter. Defaults to "linear".
+        :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.5.
         """
         # call the base class constructor, sets nn and num_steps attributes
         super(DDIM, self).__init__(nn=nn, num_steps=num_steps, param_range=param_range, lambda_range=lambda_range,
@@ -26,12 +33,31 @@ class DDIM(DM):
         self.alpha = None
         self.noise_level = noise_level
         self.predict_eps_t = predict_eps_t
-        self._init_DDIM()
+        self._alpha_schedule = None
+        self.alpha_schedule = alpha_schedule
+        self.matthew_factor = matthew_factor
 
-    def _init_DDIM(self):
-        """ Initialize the DDIM parameters """
-        # alpha[0] = 1, fully denoised; alpha[-1] = 0, fully noised
-        self.alpha = linspace(1 - 1 / self.num_steps, 1e-8, self.num_steps)
+    @property
+    def alpha_schedule(self):
+        return self._alpha_schedule
+
+    @alpha_schedule.setter
+    def alpha_schedule(self, value):
+        if value not in self.ALPHA_SCHEDULES:
+            raise ValueError(f"Invalid alpha schedule: {value}. Must be one of {self.ALPHA_SCHEDULES}.")
+        self._alpha_schedule = value
+
+        if value == "linear":
+            self.alpha = linspace(1 - 1 / self.num_steps, 1e-8, self.num_steps)
+
+        elif value == "cosine":
+            delta = 1e-3
+            x = linspace(0, pi, self.num_steps)
+            self.alpha = (cos(x) * (1 - 2 * delta) + 1) / 2
+
+        else:
+            raise NotImplementedError(f"Alpha schedule `{value}` not implemented.")
+
         a = cat([tensor([1]), self.alpha])
         self.sigma = (1 - a[:-1]) / (1 - a[1:]) * (1 - a[1:] / a[:-1])
         self.sigma = sqrt(self.sigma)
@@ -83,7 +109,7 @@ class DDIM(DM):
             s = self.sigma[T] * self.noise_level
             z = randn_like(xt)
 
-            eps = self(xt, t, *conditions)
+            eps = self(xt, t, *conditions) * self.matthew_factor
             x0_pred = (xt - (1-self.alpha[T]).sqrt() * eps) / self.alpha[T].sqrt()
 
             xt = self.alpha[T-1].sqrt() * x0_pred + (1 - self.alpha[T-1] - s ** 2).sqrt() * eps + s * z

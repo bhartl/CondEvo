@@ -74,7 +74,7 @@ class DM(Module):
             exceeding_x_source = randn(int(sum(exceeding_x)), *shape) * self.sigma_zero
 
             if exceeding_count > 10:
-                # clamp to param_range
+                # clamp to param_range if too many iterations
                 exceeding_x_source = exceeding_x_source.clamp(-self.param_range, self.param_range)
                 x_sampled[exceeding_x] = exceeding_x_source
                 break

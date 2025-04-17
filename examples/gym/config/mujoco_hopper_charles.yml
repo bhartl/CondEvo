@@ -50,10 +50,10 @@ diff: DDIM
 diff_config:
   num_steps: 1000
   noise_level: 0.05
-  param_range: 100
+  param_range: 10
 nn: MLP
 nn_config:
-  num_hidden: 128
-  num_layers: 2
+  num_hidden: 256
+  num_layers: 3
   activation: ELU
   batch_norm: True

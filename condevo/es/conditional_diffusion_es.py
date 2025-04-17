@@ -239,7 +239,7 @@ class CHARLES(HADES):
                         # find the most similar sample in the buffer
                         distances = torch.cdist(xi.reshape(1, -1), self.buffer['x']).flatten()
                         # get the index of the most similar sample
-                        for index in distances.argsort():
+                        for index in distances.argsort()[:3]:
                             # replace the most similar sample with the new sample, if it is better
                             if self.buffer['fitness'][index] < fi and index not in indices:
                                 # replace the sample in the buffer

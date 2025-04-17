@@ -1,26 +1,29 @@
-from torch import ones, rand, randn_like
+from torch import ones, rand, randn_like, sqrt
 from condevo.diffusion import DM
+import numpy as np
 
 
 class RectFlow(DM):
     """ Rectified Flow model for `condevo` package. """
 
-    def __init__(self, nn, num_steps=100, param_range=None, lambda_range=0., sigma_zero=1.0, matthew_factor=0.5,):
+    def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., matthew_factor=np.sqrt(0.5),
+                 param_mean=0.0, param_std=1.0):
         """ Initialize the RectFlow model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
         :param num_steps: int, Number of steps for the diffusion model. Defaults to 100.
-        :param param_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
+        :param diff_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
-        :param sigma_zero: float, Initial noise level for the diffusion model. Defaults to 1.0.
         :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.5.
         """
-        super(RectFlow, self).__init__(nn=nn, num_steps=num_steps, param_range=param_range, lambda_range=lambda_range, sigma_zero=sigma_zero)
+        super(RectFlow, self).__init__(nn=nn, num_steps=num_steps,
+                                       diff_range=diff_range, lambda_range=lambda_range,
+                                       param_mean=param_mean, param_std=param_std)
         self.matthew_factor = matthew_factor
 
     def interpolate(self, x1, t):
         # Note: different from DDPM or DDIM, x1~data, and x0~noise
-        x0 = randn_like(x1) * self.sigma_zero
+        x0 = randn_like(x1)
         xt = t * x1 + (1 - t) * x0
         return xt, x0
 
@@ -48,3 +51,22 @@ class RectFlow(DM):
         v_pred = self(xt, t, *conditions)
         v = x - x0
         return v, v_pred
+
+    def regularize(self, x_batch, w_batch, *c_batch):
+        # regularize the denoising steps
+        if self.diff_range is not None and self.lambda_range:
+            # random time steps for the diffusion process
+            t = rand(x_batch.shape[0]).reshape(-1, 1)
+
+            # apply diffusion and predict the noise
+            xt, _ = self.diffuse(x_batch, t)
+            v = self(xt, t, *c_batch)
+
+            # recover the denoised parameters
+            x0_direct = xt + v
+
+            # return the regularization loss
+            return self.lambda_range * self.exceeds_diff_range(x0_direct)[:, None]
+
+        # default regularization
+        return super(RectFlow, self).regularize(x_batch, w_batch, *c_batch)

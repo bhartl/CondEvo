@@ -9,15 +9,18 @@ import torch
 class DM(Module):
     """ Diffusion Model base-class for condevo package. """
 
-    def __init__(self, nn, num_steps=100, param_range=None, lambda_range=0., sigma_zero=1.0):
+    def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., param_mean=0.0, param_std=1.0, epsilon=1e-8):
         """ Initialize the Diffusion Model """
         super(DM, self).__init__()
         self.num_steps = num_steps
         self.nn = nn
-        self.param_range = param_range
+
+        self.diff_range = diff_range
         self.lambda_range = lambda_range
 
-        self.sigma_zero = 1.0
+        self.param_mean = param_mean
+        self.param_std = param_std
+        self.epsilon = epsilon
 
     def init_nn(self):
         """ Initialize the neural network model """
@@ -60,22 +63,26 @@ class DM(Module):
         if (num is not None) and (x_source is not None):
             raise ValueError("Only one of `num` and `xt` should be specified")
 
-        if (x_source is None) and (num is not None):
-            x_source = randn(num, *shape) * self.sigma_zero
+
+        if x_source is not None:
+            x_source = self.scale(x_source)
+
+        elif num is not None:
+            x_source = randn(num, *shape)
 
         sample_vectorized = vmap(self.sample_point, randomness='different')
         x_sampled = sample_vectorized(x_source, *conditions, t_start=t_start)
 
         # check for valid parameter range
-        exceeding_x = self.exceeds_param_range(x_sampled) > 0
+        exceeding_x = self.exceeds_diff_range(x_sampled, scale=False) > 0
         exceeding_count = 0
         while exceeding_x.any():
             # new sample points
-            exceeding_x_source = randn(int(sum(exceeding_x)), *shape) * self.sigma_zero
+            exceeding_x_source = randn(int(sum(exceeding_x)), *shape)
 
             if exceeding_count > 10:
-                # clamp to param_range if too many iterations
-                exceeding_x_source = exceeding_x_source.clamp(-self.param_range, self.param_range)
+                # clamp to diff_range if too many iterations
+                exceeding_x_source = exceeding_x_source.clamp(-self.diff_range, self.diff_range)
                 x_sampled[exceeding_x] = exceeding_x_source
                 break
 
@@ -84,14 +91,14 @@ class DM(Module):
                 x_resampled = sample_vectorized(exceeding_x_source, *exceeding_conditions)
 
                 # check for valid parameter range and integrate into samples
-                exceeding_resampled =  self.exceeds_param_range(x_resampled) > 0
+                exceeding_resampled = self.exceeds_diff_range(x_resampled, scale=False) > 0
                 valid_resampled = torch.where(exceeding_x)[0][~exceeding_resampled]
                 x_sampled[valid_resampled] = x_resampled[~exceeding_resampled]
 
-            exceeding_x = self.exceeds_param_range(x_sampled) > 0
+            exceeding_x = self.exceeds_diff_range(x_sampled, scale=False) > 0
             exceeding_count += 1
 
-        return x_sampled
+        return self.unscale(x_sampled)
 
     def eval_val_pred(self, x, *conditions):
         """ Evaluate the value (actual noise during diffusion) and predicted noise of the diffusion model.
@@ -113,35 +120,49 @@ class DM(Module):
         """ Optional regularizer-function for the denoising during training, defaults to 0. """
         return 0.
     
-    def exceeds_param_range(self, x):
+    def exceeds_diff_range(self, x, scale=False):
         """ If the parameter range is specified, evaluate the exceed of the parameter range (via ReLU),
             otherwise return zeros tensor. """
-        if self.param_range is None:
+        if self.diff_range is None:
             return zeros_like(x[:, 0])
         
+        if scale:
+            # scale the input tensor `x` using the standard scaler
+            x = self.scale(x)
+
         # evaluate the exceed of the parameter range (via ReLU)
-        return ReLU()(x ** 2 - self.param_range ** 2).mean(dim=-1)
+        return ReLU()((x ** 2 - self.diff_range ** 2).reshape(x.shape[0], -1)).mean(dim=-1).sqrt()
 
-    def update_sigma_zero(self, x, weights=None):
-        """ Update the sigma_zero parameter based on STD of diffused input data `x`. """
+    @no_grad()
+    def transform_standard_scaler(self, x, weights=None):
+        """ Update the standard scaler for the diffusion model. """
+        self.param_mean = x.mean(dim=0, keepdim=True)
+        self.param_std = x.std(dim=0, keepdim=True)
 
-        # diffuse data fully, to get range of parameter variability
-        xt, _ = self.diffuse(x=x, t=torch.zeros(1)[0])
-
+        x = self.scale(x)
         if weights is not None:
-            # evaluate weighted STD based on weights
-            w = weights / weights.sum()
-            mean = (w * xt).sum(dim=0)
-            std_x = (w * (xt - mean)**2).sum(dim=0)
-        else:
-            # evaluate STD based on data
-            std_x = xt.std(dim=0)
+            weights = weights + self.epsilon
 
-        self.sigma_zero = max([1., std_x.mean()])
-        if self.param_range:
-            self.sigma_zero = min(self.sigma_zero, self.param_range)
+        return x, weights
 
-        return self.sigma_zero
+    @no_grad()
+    def scale(self, x):
+        """ Scale the input tensor `x` using the standard scaler. """
+        if self.param_mean is None or self.param_std is None:
+            raise ValueError("Standard scaler not initialized, call `update_standard_scaler` first.")
+
+        x = (x - self.param_mean) / self.param_std
+        return x
+
+    @no_grad()
+    def unscale(self, x):
+        """ Unscale the input tensor `x` using the standard scaler. """
+        if self.param_mean is None or self.param_std is None:
+            raise ValueError("Standard scaler not initialized, call `update_standard_scaler` first.")
+
+        x = x * self.param_std + self.param_mean
+        return x
+
 
     def fit(self, x, *conditions, weights=None, optimizer: Union[str, type] = optim.Adam, max_epoch=100, lr=1e-3,
             weight_decay=1e-5, batch_size=32, scheduler="cosine"):
@@ -178,20 +199,25 @@ class DM(Module):
         if weights is None:
             weights = ones(x.shape[0], *(1 for _ in range(len(x.shape[1:]))), device=x.device)
 
-        exceeding_x = self.exceeds_param_range(x) > 0
+        else:
+            # check for NaN values in weights
+            nan_weights = torch.isnan(weights)
+            if nan_weights.any():
+                x = x[~nan_weights]
+                conditions = [c[~nan_weights] for c in conditions]
+                weights = weights[~nan_weights]
+
+        # check for exceeding parameter range
+        exceeding_x = self.exceeds_diff_range(x, scale=True) > 0
         if exceeding_x.any():
             x = x[~exceeding_x]
             conditions = [c[~exceeding_x] for c in conditions]
             weights = weights[~exceeding_x]
 
-        self.update_sigma_zero(x=x, weights=weights)
+        # Scale data and weights to standard normal distribution
+        x, weights = self.transform_standard_scaler(x=x, weights=weights)
         dataset = TensorDataset(x, *conditions, weights)
-
-        training_dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=True,
-        )
+        training_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
         loss_history = []
         for _ in tqdm(range(int(max_epoch))):
@@ -205,7 +231,8 @@ class DM(Module):
                 loss.backward()
                 batch_loss = batch_loss + loss.item()
                 optimizer.step()
-            loss_history.append(batch_loss)
+
+            loss_history.append(batch_loss/batch_size)
             if scheduler is not None:
                 scheduler.step()
 

@@ -358,12 +358,15 @@ class HADES:
             # "Mutate" crossover samples by adding noise (applying diffusion for a few steps)
             # -> would be interesting to find number of steps based on points of
             #    spontaneous symmetry breaking in the diffusion process.  https://arxiv.org/abs/2305.19693
+            samples = self.model.scale(samples)
             samples, _ = self.model.diffuse(samples, t=t_diffuse)
+            samples = self.model.unscale(samples)
 
         else:
             mutate_indices = torch.rand(samples.shape[0]) < self.unbiased_mutation_ratio
-            mutated_samples, _ = self.model.diffuse(samples[mutate_indices], t=t_diffuse)
-            samples[mutate_indices] = mutated_samples
+            mutated_samples = self.model.scale(samples[mutate_indices])
+            mutated_samples, _ = self.model.diffuse(mutated_samples, t=t_diffuse)
+            samples[mutate_indices] = self.model.unscale(mutated_samples)
 
         if self.readaptation:
             # refine the diffused/mutated samples by applying denoising for a few steps

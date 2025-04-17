@@ -1,5 +1,6 @@
 from torch import tensor, ones, rand, randn_like, cat, linspace, sqrt, cos, pi
 from condevo.diffusion import DM
+import numpy as np
 
 
 class DDIM(DM):
@@ -8,8 +9,8 @@ class DDIM(DM):
     ALPHA_SCHEDULES = ["linear", "cosine", ]
 
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
-                 param_range=None, lambda_range=0., predict_eps_t=False, sigma_zero=1.0,
-                 alpha_schedule="linear", matthew_factor=0.5,
+                 diff_range=None, lambda_range=0., predict_eps_t=False, param_mean=0.0, param_std=1.0,
+                 alpha_schedule="linear", matthew_factor=np.sqrt(0.5),
                  ):
         """ Initialize the DDIM model
 
@@ -17,7 +18,7 @@ class DDIM(DM):
         :param num_steps: int, Number of steps for the diffusion model. Defaults to 100.
         :param skip_connection: bool, Using skip connections for the diffusion model error estimate. Defaults to True.
         :param noise_level: float, Noise level for the diffusion model. Defaults to 1.0.
-        :param param_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
+        :param diff_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
         :param predict_eps_t: bool, Whether to predicting the noise `eps_t` for a given `xt` and `t`, or
                               or the total noise `eps` as if `t==T` for a given `xt`. Defaults to False (total noise).
@@ -25,8 +26,8 @@ class DDIM(DM):
         :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.5.
         """
         # call the base class constructor, sets nn and num_steps attributes
-        super(DDIM, self).__init__(nn=nn, num_steps=num_steps, param_range=param_range, lambda_range=lambda_range,
-                                   sigma_zero=sigma_zero)
+        super(DDIM, self).__init__(nn=nn, num_steps=num_steps, diff_range=diff_range, lambda_range=lambda_range,
+                                   param_mean=param_mean, param_std=param_std)
         self.skip_connection = skip_connection
 
         # DDIM parameters
@@ -84,7 +85,7 @@ class DDIM(DM):
             tuple: Diffused tensor `xt` and the totoal noise `eps`.
                    In case of `self.predict_eps_t`, the returned noise is the actual noise `eps_t` at time `t`.
         """
-        eps = randn_like(x) * self.sigma_zero
+        eps = randn_like(x)
         if isinstance(t, float):
             t = tensor(t)
         T = (t * (self.num_steps - 1)).long()
@@ -124,7 +125,7 @@ class DDIM(DM):
 
     def regularize(self, x_batch, w_batch, *c_batch):
         # regularize the denoising steps
-        if self.param_range is not None and self.lambda_range:
+        if self.diff_range is not None and self.lambda_range:
             # random time steps for the diffusion process
             t = rand(x_batch.shape[0]).reshape(-1, 1)
             T = (t * (self.num_steps - 1)).long()
@@ -134,10 +135,11 @@ class DDIM(DM):
             eps_pred = self(xt, t, *c_batch)
 
             # recover the denoised parameters
-            x0_pred = (xt - (1 - self.alpha[T]).sqrt() * eps_pred) / self.alpha[T].sqrt()
+            score = eps_pred / (self.alpha[T].sqrt())
+            x0_direct = xt - score
 
             # return the regularization loss
-            return self.lambda_range * self.exceeds_param_range(x0_pred)[:, None]
+            return self.lambda_range * self.exceeds_diff_range(x0_direct)[:, None]
 
         # default regularization
         return super(DDIM, self).regularize(x_batch, w_batch, *c_batch)

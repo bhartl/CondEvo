@@ -2,10 +2,10 @@ import torch
 from torch import randn, optim
 import numpy as np
 from typing import Union, Optional, Tuple
-from condevo.diffusion import DM, get_default_model
-from condevo.es import utils
-from condevo.es import HADES
-from condevo.es.guidance import Condition, FitnessCondition
+from ..diffusion import DM, get_default_model
+from ..es import utils
+from ..es import HADES
+from ..es.guidance import Condition, FitnessCondition
 
 
 class CHARLES(HADES):

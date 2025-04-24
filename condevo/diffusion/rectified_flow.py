@@ -1,5 +1,5 @@
 from torch import ones, rand, randn_like, sqrt
-from condevo.diffusion import DM
+from ..diffusion import DM
 import numpy as np
 
 

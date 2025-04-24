@@ -1,5 +1,5 @@
 from torch import tensor, ones, rand, randn_like, cat, linspace, sqrt, cos, pi
-from condevo.diffusion import DM
+from ..diffusion import DM
 import numpy as np
 
 

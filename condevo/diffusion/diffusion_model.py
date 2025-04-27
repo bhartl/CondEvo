@@ -63,7 +63,9 @@ class DM(Module):
         if (num is not None) and (x_source is not None):
             raise ValueError("Only one of `num` and `xt` should be specified")
 
-
+        if conditions is None:
+            conditions = tuple()
+            
         if x_source is not None:
             x_source = self.scale(x_source)
 

@@ -44,16 +44,16 @@ es_config:
   diff_max_epoch: 300                # DM: number of training steps for the diffusion model at each generation
   diff_continuous_training: False    # DM: continuous training, or retrain diffusion model at each generation
   buffer_size: 4
-  diversity_selection: True
+  diversity_selection: False
 diff: DDIM
 diff_config:
   num_steps: 1000
   noise_level: 0.05
   diff_range: 10.
 #  lambda_range: 0.000001
+  sample_uniform: False
+  autoscaling: False
   alpha_schedule: cosine
-  skip_connection: False
-  predict_eps_t: True
 nn: MLP
 nn_config:
   num_hidden: 64

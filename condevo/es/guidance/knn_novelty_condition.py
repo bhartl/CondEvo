@@ -1,5 +1,5 @@
 from torch import Tensor, cat, randn, multinomial, cdist, sort, stack, exp, log
-from condevo.es.guidance import Condition
+from guidance import Condition
 
 
 class KNNNoveltyCondition(Condition):

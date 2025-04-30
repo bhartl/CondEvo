@@ -3,8 +3,8 @@ from torch import randn, optim, tensor, zeros, Tensor
 import numpy as np
 from scipy.optimize import minimize
 from typing import Union
-from condevo.diffusion import DM, DDIM, RectFlow, get_default_model
-from condevo.es import utils
+from ..diffusion import DM, DDIM, RectFlow, get_default_model
+from ..es import utils
 
 
 class HADES:

@@ -1,5 +1,5 @@
 from torch import abs, randn, Tensor, float32
-from condevo.es.guidance import Condition
+from guidance import Condition
 
 
 class FitnessCondition(Condition):

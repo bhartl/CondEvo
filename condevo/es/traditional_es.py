@@ -3,7 +3,7 @@
 """
 from torch import Tensor, tensor
 import numpy as np
-from condevo.es import utils
+from ..es import utils
 
 
 class CMAES:

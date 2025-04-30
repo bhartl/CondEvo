@@ -52,5 +52,9 @@ gym = [
     "mindcraft",
 ]
 
+tensorboard = [
+    "tensorboard",
+]
+
 [tool.setuptools]
 py-modules = ["condevo"]

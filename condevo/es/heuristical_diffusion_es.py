@@ -264,6 +264,19 @@ class HADES:
         self._asked += 1
         return self.loss
 
+    def log(self):
+        logger = self.model.logger
+        if logger is None:
+            return
+
+        logger.log_scalar("evo/population/best", self.fitness.max(), logger.generation)
+        logger.log_scalar("evo/population/mean", self.fitness.mean(), logger.generation)
+        logger.log_scalar("evo/population/std", self.fitness.std(), logger.generation)
+
+        logger.log_scalar("evo/buffer/best", self.buffer['fitness'].max(), logger.generation)
+        logger.log_scalar("evo/buffer/mean", self.buffer['fitness'].mean(), logger.generation)
+        logger.log_scalar("evo/buffer/std", self.buffer['fitness'].std(), logger.generation)
+
     def sample(self, num_samples=None, *conditions):
         """ Sample solutions from the diffusion model and from crossover.
 
@@ -358,15 +371,12 @@ class HADES:
             # "Mutate" crossover samples by adding noise (applying diffusion for a few steps)
             # -> would be interesting to find number of steps based on points of
             #    spontaneous symmetry breaking in the diffusion process.  https://arxiv.org/abs/2305.19693
-            samples = self.model.scale(samples)
             samples, _ = self.model.diffuse(samples, t=t_diffuse)
-            samples = self.model.unscale(samples)
 
         else:
             mutate_indices = torch.rand(samples.shape[0]) < self.unbiased_mutation_ratio
-            mutated_samples = self.model.scale(samples[mutate_indices])
+            mutated_samples = samples[mutate_indices]
             mutated_samples, _ = self.model.diffuse(mutated_samples, t=t_diffuse)
-            samples[mutate_indices] = self.model.unscale(mutated_samples)
 
         if self.readaptation:
             # refine the diffused/mutated samples by applying denoising for a few steps
@@ -487,6 +497,8 @@ class HADES:
             # add new samples to tail of buffer
             self.buffer['x'] = torch.cat((self.buffer['x'], x), dim=0)
             self.buffer['fitness'] = torch.cat((self.buffer['fitness'], fitness), dim=0)
+
+        self.log()
 
     def train_model(self, dataset, weights=None):
         """ Train the diffusion model on the given dataset.

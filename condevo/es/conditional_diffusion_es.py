@@ -258,6 +258,8 @@ class CHARLES(HADES):
             self.buffer['fitness'] = torch.cat((self.buffer['fitness'], self.fitness), dim=0)
             self.buffer['conditions'] = tuple(torch.cat((self.buffer['conditions'][i], c), dim=0) for i, c in enumerate(conditions))
 
+        self.log()
+
     def sample_conditions(self, num_samples):
         samples = [c.sample(charles_instance=self, num_samples=num_samples) for c in self.conditions]
         for i in range(len(samples)):

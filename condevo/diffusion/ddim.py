@@ -10,7 +10,8 @@ class DDIM(DM):
 
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
                  diff_range=None, lambda_range=0., predict_eps_t=False, param_mean=0.0, param_std=1.0,
-                 alpha_schedule="linear", matthew_factor=np.sqrt(0.5),
+                 alpha_schedule="linear", matthew_factor=np.sqrt(0.5), sample_uniform=True, autoscaling=True,
+                 log_dir="",
                  ):
         """ Initialize the DDIM model
 
@@ -27,7 +28,8 @@ class DDIM(DM):
         """
         # call the base class constructor, sets nn and num_steps attributes
         super(DDIM, self).__init__(nn=nn, num_steps=num_steps, diff_range=diff_range, lambda_range=lambda_range,
-                                   param_mean=param_mean, param_std=param_std)
+                                   param_mean=param_mean, param_std=param_std, sample_uniform=sample_uniform,
+                                   autoscaling=autoscaling, log_dir=log_dir)
         self.skip_connection = skip_connection
 
         # DDIM parameters
@@ -86,6 +88,10 @@ class DDIM(DM):
                    In case of `self.predict_eps_t`, the returned noise is the actual noise `eps_t` at time `t`.
         """
         eps = randn_like(x)
+        if not self.autoscaling:
+            # explore larger parameter space if necessary
+            eps = eps * self.param_std
+
         if isinstance(t, float):
             t = tensor(t)
         T = (t * (self.num_steps - 1)).long()
@@ -111,7 +117,7 @@ class DDIM(DM):
             z = randn_like(xt)
 
             eps = self(xt, t, *conditions) * self.matthew_factor
-            x0_pred = (xt - (1-self.alpha[T]).sqrt() * eps) / self.alpha[T].sqrt()
+            x0_pred = (xt - (1-self.alpha[T]).sqrt() * eps) / (self.alpha[T].sqrt())
 
             xt = self.alpha[T-1].sqrt() * x0_pred + (1 - self.alpha[T-1] - s ** 2).sqrt() * eps + s * z
 

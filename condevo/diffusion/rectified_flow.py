@@ -7,7 +7,7 @@ class RectFlow(DM):
     """ Rectified Flow model for `condevo` package. """
 
     def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., matthew_factor=np.sqrt(0.5),
-                 param_mean=0.0, param_std=1.0):
+                 param_mean=0.0, param_std=1.0, autoscaling=True, sample_uniform=True, log_dir=""):
         """ Initialize the RectFlow model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
@@ -15,15 +15,22 @@ class RectFlow(DM):
         :param diff_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
         :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.5.
+        :param param_mean: float, Initial mean of the parameters. Defaults to 0.0.
+        :param param_std: float, Initial standard deviation of the parameters. Defaults to 1.0.
+        :param autoscaling: bool, Whether to use autoscaling for the sampled parameters before denoising. Defaults to True.
+        :param sample_uniform: bool, Whether to sample uniformly or not. Defaults to True.
+        :param log_dir: str, Directory for tensorboard logging. Defaults to "". If no directory is specified,
+                        no logging will be performed. (WIP)
         """
         super(RectFlow, self).__init__(nn=nn, num_steps=num_steps,
                                        diff_range=diff_range, lambda_range=lambda_range,
-                                       param_mean=param_mean, param_std=param_std)
+                                       param_mean=param_mean, param_std=param_std, autoscaling=autoscaling,
+                                       sample_uniform=sample_uniform, log_dir=log_dir)
         self.matthew_factor = matthew_factor
 
     def interpolate(self, x1, t):
         # Note: different from DDPM or DDIM, x1~data, and x0~noise
-        x0 = randn_like(x1)
+        x0 = self.draw_random(*x1.shape)
         xt = t * x1 + (1 - t) * x0
         return xt, x0
 
@@ -49,7 +56,7 @@ class RectFlow(DM):
         t = rand(x.shape[0], 1)
         xt, x0 = self.diffuse(x, t)
         v_pred = self(xt, t, *conditions)
-        v = x - x0
+        v = x - xt
         return v, v_pred
 
     def regularize(self, x_batch, w_batch, *c_batch):

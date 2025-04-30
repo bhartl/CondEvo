@@ -7,7 +7,8 @@ experiment_config:
     num_hidden: 6
     num_layers: 2
   world_kwargs:
-    n_episodes: 3
+    n_episodes: 1
+    max_steps: 10
     log_fields: ["reward", "done", "observation"]
 es: CHARLES
 conditions:
@@ -16,7 +17,7 @@ conditions:
     greedy: true
 generations: 200
 es_config:
-  popsize: 128
+  popsize: 16
   is_genetic_algorithm: False
   selection_pressure: 18.0           # selection pressure for roulette wheel selection
   adaptive_selection_pressure: False # whether to adapt the selection pressure
@@ -33,13 +34,13 @@ es_config:
   diff_batch_size: 256               # DM: batch size for training the diffusion model
   diff_max_epoch: 300                # DM: number of training steps for the diffusion model at each generation
   diff_continuous_training: False    # DM: continuous training, or retrain diffusion model at each generation
-  buffer_size: 8
+  buffer_size: 2
   diversity_selection: True
 diff: DDIM
 diff_config:
   num_steps: 1000
   noise_level: 0.05
-  param_range: 100
+  diff_range: 100
 nn: MLP
 nn_config:
   num_hidden: 128

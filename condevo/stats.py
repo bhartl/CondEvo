@@ -42,6 +42,23 @@ def distance_matrix(x, y):
     return torch.cdist(x, y)
 
 
+def diversity(x):
+    """Compute the diversity of a set of points in a given space.
+
+    Args:
+        x: (N, d) tensor, where N is the number of points and d is the dimensionality.
+    Returns:
+        float, the diversity of the points.
+    """
+    # Compute pairwise distances
+    dist_matrix = distance_matrix(x, x)
+
+    # Compute mean distance
+    mean_distance = dist_matrix.mean()
+
+    return mean_distance
+
+
 def kde_estimate(x, sample_points=None, bandwidth=0.1):
     """ Kernel Density Estimation (KDE) method.
 

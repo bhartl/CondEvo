@@ -1,5 +1,5 @@
 from torch import Tensor, cat, randn, multinomial, cdist, sort, stack, exp, log
-from guidance import Condition
+from . import Condition
 
 
 class KNNNoveltyCondition(Condition):

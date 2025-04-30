@@ -4,7 +4,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from tqdm import tqdm
 from typing import Union
 import torch
-from condevo.logger import TensorboardLogger
+from ..logger import TensorboardLogger
 
 
 class DM(Module):

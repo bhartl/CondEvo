@@ -88,7 +88,7 @@ class DDIM(DM):
                    In case of `self.predict_eps_t`, the returned noise is the actual noise `eps_t` at time `t`.
         """
         eps = randn_like(x)
-        if not self.autoscaling:
+        if self.autoscaling:
             # explore larger parameter space if necessary
             eps = eps * self.param_std
 
@@ -113,11 +113,14 @@ class DDIM(DM):
 
         for T in range(t_start - 1, 0, -1):
             t = one * T / self.num_steps
-            s = self.sigma[T] * self.noise_level
+            s = self.sigma[T-1] * self.noise_level
             z = randn_like(xt)
 
             eps = self(xt, t, *conditions) * self.matthew_factor
-            x0_pred = (xt - (1-self.alpha[T]).sqrt() * eps) / (self.alpha[T].sqrt())
+            if self.predict_eps_t:
+                x0_pred = xt - eps
+            else:
+                x0_pred = (xt - (1-self.alpha[T]).sqrt() * eps) / (self.alpha[T].sqrt())
 
             xt = self.alpha[T-1].sqrt() * x0_pred + (1 - self.alpha[T-1] - s ** 2).sqrt() * eps + s * z
 

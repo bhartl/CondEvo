@@ -74,6 +74,10 @@ class DM(Module):
         return self.nn.num_conditions
 
     @property
+    def num_conditions(self):
+        return self.nn.num_conditions
+
+    @property
     def logger(self):
         """ Return the logger instance for logging the training process """
         if self._logger is None:

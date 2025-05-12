@@ -1,4 +1,4 @@
-experiment: MujocoAnt
+experiment: MujocoHumanoid
 timestamp: True
 new_model: True
 experiment_config:
@@ -48,8 +48,8 @@ es_config:
 diff: DDIM
 diff_config:
   num_steps: 1000
-  noise_level: 0.05
-  diff_range: 100
+  noise_level: 0.5
+  diff_range: 5
   sample_uniform: False
   autoscaling: False
 nn: MLP

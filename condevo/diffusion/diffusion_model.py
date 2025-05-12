@@ -58,6 +58,10 @@ class DM(Module):
             raise NotImplementedError("Model does not have a `_build_model` method.")
 
     @property
+    def num_conditions(self):
+        return self.nn.num_conditions
+
+    @property
     def logger(self):
         """ Return the logger instance for logging the training process """
         if self._logger is None:
@@ -85,7 +89,7 @@ class DM(Module):
     def forward(self, x, t, *conditions):
         """Predict the noise `eps` with given `x` and `t`, `t` [0,1] represents the diffusion time step,
            where `t==0` is the data state (denoised) and `t==1` is the fully noisy state. """
-        return self.nn(cat([x, t, *conditions], dim=-1))
+        return self.nn(x, t, *conditions)
 
     def sample_point(self, xt, *conditions, t_start=0):
         pass
@@ -145,7 +149,7 @@ class DM(Module):
             # new sample points
             exceeding_x_source = self.draw_random(int(sum(exceeding_x)), *shape)
 
-            if exceeding_count > 10:
+            if exceeding_count > 2:  # try 10 times to sample valid points
                 # clamp to diff_range if too many iterations
                 exceeding_x_source = exceeding_x_source.clamp(-self.diff_range, self.diff_range)
                 x_sampled[exceeding_x] = exceeding_x_source

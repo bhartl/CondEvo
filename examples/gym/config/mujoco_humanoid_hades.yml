@@ -1,4 +1,4 @@
-experiment: MujocoAnt
+experiment: MujocoHumanoid
 timestamp: True
 new_model: True
 experiment_config:
@@ -27,10 +27,10 @@ es_config:
   selection_pressure: 18.0           # selection pressure for roulette wheel selection
   adaptive_selection_pressure: False # whether to adapt the selection pressure
   elite_ratio: 0.125                 # ratio of the population to keep as elite. If crossover is used, an additional copy of the elite solutions might be added to the population if `improvement_steps` is defined.
-  crossover_ratio: 0.25              # ratio of the population to perform crossover (if genetic algorithm, otherwise ignored)
-  mutation_rate: 0.1                 # mutation rate after crossover and sampling
+  crossover_ratio: 0.0625            # ratio of the population to perform crossover (if genetic algorithm, otherwise ignored)
+  mutation_rate: 0.25                # mutation rate after crossover and sampling
   unbiased_mutation_ratio: 0.125     # ratio of the population to perform unbiased mutation (if genetic algorithm, otherwise ignored)
-  readaptation: False                # whether to use mutation adaptation (denoising steps) or not. Only valid for `HADES` and `CHARLES` evolutionary strategies.
+  readaptation: True                 # whether to use mutation adaptation (denoising steps) or not. Only valid for `HADES` and `CHARLES` evolutionary strategies.
   forget_best: True                  # whether to forget the best solution, or keep the elites for the next generation
   weight_decay: 0.001                # L2 weight decay for the parameters of the evolutionary strategy (NOT of the diffusion model)
   diff_optim: "Adam"                 # DM: optimizer for training the diffusion model
@@ -44,13 +44,14 @@ es_config:
 diff: DDIM
 diff_config:
   num_steps: 1000
-  noise_level: 0.05
-  diff_range: 100
-  sample_uniform: False
-  autoscaling: False
+  noise_level: 0.5
+  diff_range: 5
+  sample_uniform: True
+  autoscaling: True
 nn: MLP
 nn_config:
-  num_hidden: 128
-  num_layers: 2
-  activation: ELU
+  num_hidden: 512
+  num_layers: 3
+  activation: SiLU
   batch_norm: True
+  dropout: 0.1

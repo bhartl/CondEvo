@@ -1,4 +1,6 @@
-from torch import ones, rand, randn_like, sqrt
+import torch
+from mpmath import arange
+from torch import ones, rand, randn_like, sqrt, arange
 from ..diffusion import DM
 import numpy as np
 
@@ -7,7 +9,7 @@ class RectFlow(DM):
     """ Rectified Flow model for `condevo` package. """
 
     def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., matthew_factor=np.sqrt(0.5),
-                 param_mean=0.0, param_std=1.0, autoscaling=True, sample_uniform=True, log_dir=""):
+                 param_mean=0.0, param_std=1.0, autoscaling=True, sample_uniform=True, log_dir="", noise_level=0.0):
         """ Initialize the RectFlow model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
@@ -27,6 +29,7 @@ class RectFlow(DM):
                                        param_mean=param_mean, param_std=param_std, autoscaling=autoscaling,
                                        sample_uniform=sample_uniform, log_dir=log_dir)
         self.matthew_factor = matthew_factor
+        self.noise_level = noise_level
 
     def interpolate(self, x1, t):
         # Note: different from DDPM or DDIM, x1~data, and x0~noise
@@ -44,19 +47,25 @@ class RectFlow(DM):
         if t_start is None:
             t_start = 0
 
-        for T in range(t_start, self.num_steps):
-            t = ones(1) * T / self.num_steps
-            v = self(xt, t, *conditions) * self.matthew_factor
-            xt = xt + v * (1 / self.num_steps)
+        xt = xt.unsqueeze(0)
+        conditions = tuple(c.unsqueeze(0) for c in conditions)
+        tt = arange(0, self.num_steps, 1).reshape(-1, 1, 1) / self.num_steps  # add (batch, 1) to t
+        dt = 1. / self.num_steps * self.matthew_factor
+        noiset = np.sqrt(dt) * randn_like(xt) * (self.noise_level * torch.linspace(1, 0, self.num_steps).reshape(-1, 1, 1))
 
-        return xt
+        for T in range(t_start, self.num_steps):
+            t = tt[T]
+            v = self(xt, t, *conditions)
+            xt = xt + v * dt + noiset[T]
+
+        return xt.squeeze(0)
 
     def eval_val_pred(self, x, *conditions):
         """ Evaluate the actual error value and error prediction of the model """
         t = rand(x.shape[0], 1)
         xt, x0 = self.diffuse(x, t)
         v_pred = self(xt, t, *conditions)
-        v = x - xt
+        v = x - x0
         return v, v_pred
 
     def regularize(self, x_batch, w_batch, *c_batch):

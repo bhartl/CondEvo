@@ -1,4 +1,4 @@
-from torch import Tensor, nn as tnn
+from torch import Tensor, cat, nn as tnn
 from torch.nn import Module, Tanh, Identity, Linear, Sequential, BatchNorm1d, Dropout, ReLU
 from typing import Type, Union
 
@@ -59,11 +59,12 @@ class MLP(Module):
 
         return self.layers
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor, t: Tensor, *conditions: Tensor) -> Tensor:
         """ Forward pass.
 
             Transforms a tensor of shape (batch_size, num_params + 1)
             to a tensor of shape (batch_size, num_params). """
+        x = cat([x, t, *conditions], dim=-1)
         return self.layers(x)
 
     def __repr__(self):

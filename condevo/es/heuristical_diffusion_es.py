@@ -1,10 +1,11 @@
 import torch
-from torch import randn, optim, tensor, zeros, Tensor
+from torch import rand, randn, optim, tensor, zeros, Tensor
 import numpy as np
 from scipy.optimize import minimize
-from typing import Union
 from ..diffusion import DM, DDIM, RectFlow, get_default_model
 from ..es import utils
+from .data import DataBuffer
+from typing import Optional, Union
 
 
 class HADES:
@@ -35,6 +36,7 @@ class HADES:
                  crossover_ratio=0.0,
                  mutation_rate=0.0,
                  unbiased_mutation_ratio=0.0,
+                 random_mutation_ratio=0.0625,
                  readaptation=False,
                  weight_decay=0.0,
                  reg='l2',
@@ -47,7 +49,7 @@ class HADES:
                  diff_sample_kwargs: dict = None,
                  to_numpy=False,
                  eps: float = 1e-12,
-                 buffer_size: int = 4,
+                 buffer_size: Optional[Union[int, dict, DataBuffer]] = 4,
                  training_interval: int = 1,
                  diversity_selection: bool = False,
                  ):
@@ -87,6 +89,8 @@ class HADES:
                                         individuals are mutated, where for each individual, `num_parameters * mutation_rate`
                                         genes are mutated by Gaussian noise of scale `sigma_init`.
                                         This option is compatible with `readaptation`.
+        :param random_mutation_ratio: float, ratio of the population that is mutated by adding random noise over
+                                      the entire parameter range (this is not subject to any potential readaptation).
         :param readaptation: bool, whether to refine the mutated samples by applying denoising for
                              `model.num_steps * mutation_rate` steps (i.e., try to revert the mutations).
         :param forget_best: bool, whether to protect the elite solution from being replaced and mutated.
@@ -128,6 +132,7 @@ class HADES:
 
         self.mutation_rate = mutation_rate  # mutation rate, intrinsically performed via DM
         self.unbiased_mutation_ratio = unbiased_mutation_ratio
+        self.random_mutation_ratio = random_mutation_ratio
         self.readaptation = readaptation
 
         if model is None or isinstance(model, str):
@@ -152,12 +157,37 @@ class HADES:
         self.best_solution = None
         self.best_fitness = -torch.inf
 
-        self.buffer = {}
-        self.buffer_size = buffer_size
+        self._buffer = None
         self.diversity_selection = diversity_selection
+        self.buffer = buffer_size
 
         self.training_interval = training_interval
         self._asked = 0
+
+    @property
+    def buffer(self):
+        """ Buffer for the solutions, fitness and conditions for training the diffusion model. """
+        return self._buffer
+
+    @buffer.setter
+    def buffer(self, value: Union[int, dict, DataBuffer]):
+        if isinstance(value, int):
+            pop_type = DataBuffer.POP_QUALITY if not self.diversity_selection else DataBuffer.POP_DIVERSITY
+            self._buffer = DataBuffer(max_size=value * self.popsize, pop_type=pop_type,
+                                      num_conditions=self.model.num_conditions)
+
+        elif isinstance(value, dict):
+            kwargs = dict()
+            if 'max_size' in value:
+                kwargs['max_size'] = value.pop('max_size') * self.popsize
+
+            self._buffer = DataBuffer(**kwargs, **value)
+
+        elif isinstance(value, DataBuffer):
+            self._buffer = value
+
+        else:
+            raise ValueError("Buffer must be an int, dict or DataBuffer instance.")
 
     @property
     def num_elite(self):
@@ -233,15 +263,20 @@ class HADES:
 
         return self.solutions
 
-    def tell(self, reward_table_result):
+    def tell(self, reward_table_result, parameters=None):
         """ Train the diffusion model on the best solution.
 
         :param reward_table_result: torch.Tensor of shape (popsize,), fitness values of the sampled solutions
+        :param parameters: torch.Tensor of shape (popsize, num_params), optional parameters to update the solutions
 
         """
         # sort the solutions by fitness, starting with the best solution
         fitness, fitness_argsort = self.get_fitness_argsort(reward_table_result)
         self.fitness = fitness
+        if parameters is not None:
+            # update the solutions with the given parameters
+            self.solutions[:] = parameters[fitness_argsort]
+
         self._fitness_argsort = fitness_argsort
         self.solutions = self.solutions[fitness_argsort]
         self.selection_pressure = self.get_selection_pressure(fitness)
@@ -273,9 +308,9 @@ class HADES:
         logger.log_scalar("evo/population/mean", self.fitness.mean(), logger.generation)
         logger.log_scalar("evo/population/std", self.fitness.std(), logger.generation)
 
-        logger.log_scalar("evo/buffer/best", self.buffer['fitness'].max(), logger.generation)
-        logger.log_scalar("evo/buffer/mean", self.buffer['fitness'].mean(), logger.generation)
-        logger.log_scalar("evo/buffer/std", self.buffer['fitness'].std(), logger.generation)
+        logger.log_scalar("evo/buffer/best", self.buffer.fitness.max(), logger.generation)
+        logger.log_scalar("evo/buffer/mean", self.buffer.fitness.mean(), logger.generation)
+        logger.log_scalar("evo/buffer/std", self.buffer.fitness.std(), logger.generation)
 
     def sample(self, num_samples=None, *conditions):
         """ Sample solutions from the diffusion model and from crossover.
@@ -385,6 +420,14 @@ class HADES:
                                         t_start=adaptive_diff_steps, conditions=conditions,
                                         **self.diff_sample_kwargs)
 
+        if self.random_mutation_ratio:
+            # add random Gaussian noise to the samples
+            random_indices = torch.rand(samples.shape[0]) < self.random_mutation_ratio
+            for i in torch.where(random_indices)[0]:
+                std = torch.maximum(self.model.param_std.flatten(), tensor(self.sigma_init, dtype=samples.dtype, device=samples.device))
+                random_noise = (rand(self.num_params) - 0.5) * std * 3.
+                samples[i, :] += random_noise
+
         return samples
 
     def get_fitness_argsort(self, reward_table):
@@ -420,13 +463,13 @@ class HADES:
         """ Perform roulette_wheel selection step of current population data. """
         x = self.solutions
         fitness = self.fitness
-        self.update_buffer(x, fitness)
+        self.buffer.push(x, fitness)
 
         # get buffer dataset
-        x_dataset = self.buffer['x'].clone()
+        x_dataset = self.buffer.x.clone()
 
         # evaluate roulette wheel selection for buffer samples
-        f_dataset = self.buffer['fitness'].flatten()
+        f_dataset = self.buffer.fitness.flatten()
 
         # check for nans (e.g. runaway parameters)
         if torch.isinf(f_dataset).any() or torch.isnan(f_dataset).any():
@@ -434,71 +477,21 @@ class HADES:
             f_dataset = f_dataset[~infty]
             x_dataset = x_dataset[~infty]
 
-        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=True)
-        self.buffer['selection_probability'] = weights_dataset.clone().flatten()
+        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False)
         weights_dataset = weights_dataset.reshape(-1, 1)
+        self.buffer.info['selection_probability'] = weights_dataset.clone().flatten()
 
         if self.is_genetic_algorithm:
             # select samples from buffer based on roulette wheel selection
-            selected_genotypes = torch.multinomial(weights_dataset.flatten(), len(x), replacement=True)
+            selected_genotypes = torch.multinomial(weights_dataset.flatten() / weights_dataset.sum(), len(x_dataset), replacement=True)
             x_dataset = x_dataset[selected_genotypes]
             weights_dataset = None  # disable weights for DM training
 
-        else:
-            # renormalize weights to max. value of 1.
-            weights_dataset = weights_dataset / weights_dataset.max()
+        # else:
+        #     # renormalize weights to max. value of 1.
+        #     weights_dataset = weights_dataset / weights_dataset.max()
 
         return x_dataset, weights_dataset
-
-    def update_buffer(self, x, fitness):
-        if "x" not in self.buffer:
-            # initialize buffer
-            self.buffer['x'] = x.clone()
-            self.buffer['fitness'] = fitness.clone()
-
-        else:
-            # update buffer
-            if self.buffer['x'].shape[0] >= self.buffer_size * self.popsize:
-                # remove nan values from buffer
-                is_nan = torch.isnan(self.buffer['fitness'])
-                num_nan = torch.sum(is_nan)
-                if num_nan:
-                    self.buffer['x'] = self.buffer['x'][~is_nan]
-                    self.buffer['fitness'] = self.buffer['fitness'][~is_nan]
-
-                if not self.diversity_selection:
-                    # remove old samples from buffer with the lowest fitness
-                    num_replace = self.popsize - num_nan
-                    indices = self.buffer['fitness'].flatten().argsort()
-                    self.buffer['x'] = self.buffer['x'][indices[num_replace:]]
-                    self.buffer['fitness'] = self.buffer['fitness'][indices[num_replace:]]
-                    self.buffer['replaced'] = indices[:num_replace]
-
-                else:
-                    # replace novel samples by maximizing the diversity of the buffer
-                    indices = []
-                    for xi, fi in zip(x, fitness):
-                        # find the most similar sample in the buffer
-                        distances = torch.cdist(xi.reshape(1, -1), self.buffer['x']).flatten()
-                        # get the index of the most similar sample
-                        for index in distances.argsort():
-                            # replace the most similar sample with the new sample, if it is better
-                            if self.buffer['fitness'][index] < fi and index not in indices:
-                                # replace the sample in the buffer
-                                self.buffer['x'][index] = xi
-                                self.buffer['fitness'][index] = fi
-                                indices += [index]
-                                break
-
-                    self.buffer['replaced'] = torch.tensor(indices)
-
-                population_diversity = torch.cdist(self.buffer['x'], self.buffer['x']).flatten()
-
-            # add new samples to tail of buffer
-            self.buffer['x'] = torch.cat((self.buffer['x'], x), dim=0)
-            self.buffer['fitness'] = torch.cat((self.buffer['fitness'], fitness), dim=0)
-
-        self.log()
 
     def train_model(self, dataset, weights=None):
         """ Train the diffusion model on the given dataset.

@@ -25,6 +25,7 @@ class CHARLES(HADES):
                  crossover_ratio=0.0,
                  mutation_rate=0.0,
                  unbiased_mutation_ratio=0.0,
+                 random_mutation_ratio=0.0625,
                  readaptation=False,
                  weight_decay: float = 0.0,
                  reg: str = 'l2',
@@ -70,6 +71,8 @@ class CHARLES(HADES):
                                         individuals are mutated, where for each individual, `model.num_steps * mutation_rate`
                                         genes are mutated by Gaussian noise of scale `sigma_init`.
                                         This option is compatible with `readaptation`.
+        :param random_mutation_ratio: float, ratio of the population that is mutated by adding random noise over
+                                      the entire parameter range (this is not subject to any potential readaptation).
         :param readaptation: bool, whether to refine the mutated samples by applying denoising for
                                     `model.num_steps * mutation_rate` steps (i.e., try to revert the mutations).
         :param forget_best: bool, whether to protect the elite solution from being replaced and mutated.
@@ -110,6 +113,7 @@ class CHARLES(HADES):
                          crossover_ratio=crossover_ratio,
                          mutation_rate=mutation_rate,
                          unbiased_mutation_ratio=unbiased_mutation_ratio,
+                         random_mutation_ratio=random_mutation_ratio,
                          readaptation=readaptation,
                          forget_best=forget_best,
                          weight_decay=weight_decay,
@@ -173,11 +177,12 @@ class CHARLES(HADES):
     def selection(self):
         x = self.solutions
         fitness = self.fitness
-        self.update_buffer(x, fitness)
+        conditions = self.evaluate_conditions(x, fitness)
+        self.buffer.push(x, fitness, *conditions)
 
         # get buffer dataset
-        x_dataset = self.buffer['x']
-        conditions = self.buffer['conditions']
+        x_dataset = self.buffer.x
+        conditions = self.buffer.conditions
 
         # evaluate roulette wheel selection for buffer samples
         f_dataset = self.buffer['fitness'].flatten()
@@ -189,9 +194,9 @@ class CHARLES(HADES):
             x_dataset = x_dataset[~infty]
             conditions = tuple(c[~infty] for c in conditions)
 
-        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=True)
-        self.buffer['selection_probability'] = weights_dataset.clone().flatten()
+        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False)
         weights_dataset = weights_dataset.reshape(-1, 1)
+        self.buffer.info['selection_probability'] = weights_dataset.clone().flatten()
 
         # evaluate potential regularization term to reinforce conditions by discounting deviations from the conditions
         if self.is_genetic_algorithm:

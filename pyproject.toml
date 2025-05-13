@@ -42,6 +42,7 @@ examples = [
     "pandas",
     "matplotlib",
     "jupyter",
+    "pyyaml",
 ]
 
 conditional = [

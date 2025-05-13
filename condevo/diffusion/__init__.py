@@ -6,7 +6,7 @@ from .rectified_flow import RectFlow
 
 
 def get_default_model(num_params, num_hidden=32, num_steps=100, dm_cls="RectFlow", num_conditions=0) -> DM:
-    from condevo.nn import MLP
+    from ..nn import MLP
     mlp = MLP(num_params=num_params, num_hidden=num_hidden, num_conditions=num_conditions)
 
     if dm_cls == "RectFlow":

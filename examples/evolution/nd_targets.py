@@ -7,14 +7,14 @@ from condevo.diffusion import DDIM, RectFlow
 from condevo.stats import diversity
 
 
-def foo(x, targets, metric='euclidean', amplitude=5.):
+def foo(x, targets, metric='euclidean', amplitude=1.):
     f = torch.zeros(x.shape[0], len(targets), device=x.device)
     for i, target in enumerate(targets):
         if metric == 'euclidean':
             f[:, i] = torch.linalg.norm(x - target, dim=-1)
 
         elif metric == 'exponential':
-            f[:, i] = torch.exp(-torch.linalg.norm(x - target, dim=-1))
+            f[:, i] = torch.exp(-torch.linalg.norm(x - target, dim=-1) / amplitude)
 
         else:
             raise NotImplementedError(f"metric {metric} not implemented")
@@ -23,7 +23,7 @@ def foo(x, targets, metric='euclidean', amplitude=5.):
         return -f.min(dim=-1).values * amplitude
 
     elif metric == 'exponential':
-        return f.max(dim=-1).values * amplitude
+        return f.max(dim=-1).values
 
     else:
         raise NotImplementedError(f"metric {metric} not implemented")
@@ -69,7 +69,99 @@ def plot_3d(x, f):
     plt.show()
 
 
-def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True):
+def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is_genetic=False, diffuser="DDIM"):
+    # define the fitness function
+    targets = [[0.1, 4.0, -3.0],
+               [-2., 0.5, -0.25],
+               [1.0, -1., 1.4],
+               ]
+
+    # targets = [
+    #     [10.332, 20.044, 10.399, ],
+    #     [-10.418, 10.795, -20.232, ],
+    #     [0.897, -10.847, -20.126,],
+    # ]
+    targets = torch.tensor(targets)
+
+    # define the neural network
+    num_params = len(targets[0])
+    mlp = MLP(num_params=num_params, num_hidden=64, num_layers=3, activation='SiLU', batch_norm=True)
+    mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
+    if diffuser == "DDIM":
+        # define the diffusion model
+        diffuser = DDIM(nn=mlp,
+                        num_steps=1000,
+                        noise_level=0.1,
+                        autoscaling=autoscaling,
+                        sample_uniform=sample_uniform,
+                        alpha_schedule="cosine",
+                        matthew_factor=0.8, # np.sqrt(0.5),
+                        diff_range=10.0,
+                        # predict_eps_t=True,
+                        )
+
+    else:
+        # define the fect flow
+        diffuser = RectFlow(nn=mlp,
+                            num_steps=100,
+                            noise_level=0.1,
+                            autoscaling=autoscaling,
+                            sample_uniform=sample_uniform,
+                            matthew_factor=0.8,  # np.sqrt(0.5),
+                            diff_range=10.0,
+                            )
+
+    # define the evolutionary strategy
+    solver = HADES(num_params=num_params,
+                   model=diffuser,
+                   popsize=popsize,
+                   sigma_init=2.0,
+                   is_genetic_algorithm=is_genetic,
+                   selection_pressure=10,
+                   adaptive_selection_pressure=False,            # chose seletion_pressure such that `elite_ratio` individuals have cumulative probability
+                   elite_ratio=0.1 if not is_genetic else 0.4,
+                   mutation_rate=0.05,
+                   unbiased_mutation_ratio=0.1,
+                   crossover_ratio=0.0,
+                   readaptation=True,
+                   forget_best=True,
+                   diff_lr=0.003,
+                   diff_optim="Adam",
+                   diff_max_epoch=300,
+                   diff_batch_size=256,
+                   diff_weight_decay=1e-6,
+                   buffer_size=5,
+                   diversity_selection=False,
+                   )
+
+    # evolutionary loop
+    x, f = [], []
+    for g in range(30):
+        x_g = solver.ask()          # sample new parameters
+        f_g = foo(x_g, targets)     # evaluate fitness
+        print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
+        solver.tell(f_g)            # tell the solver the fitness of the parameters
+        x.append(x_g)
+        f.append(f_g)
+
+    import matplotlib.pyplot as plt
+
+    dists = []
+    for i, target in enumerate(targets):
+        dists.append(torch.stack([torch.linalg.norm(xi - target, dim=-1).min() for xi in x]))
+
+    for i, d in enumerate(dists):
+        plt.plot(d, label=f"target {i}", marker=".", linewidth=0)
+
+    plt.xlabel("Generation")
+    plt.ylabel("Distance to target")
+
+    # plotting results
+    plot_3d(x, f)
+
+
+def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True):
     # define the fitness function
     targets = [[0.1, 4.0, -3.0],
                [-2., 0.5, -0.25],
@@ -79,18 +171,18 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True):
 
     # define the neural network
     num_params = len(targets[0])
-    mlp = MLP(num_params=num_params, num_hidden=48, num_layers=3, activation='ELU', batch_norm=True)
+    mlp = MLP(num_params=num_params, num_hidden=64, num_layers=3, activation='SiLU', batch_norm=True)
     mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
     # define the diffusion model
     diffuser = DDIM(nn=mlp,
-                    num_steps=100,
+                    num_steps=1000,
                     noise_level=1.0,
                     autoscaling=autoscaling,
                     sample_uniform=sample_uniform,
                     alpha_schedule="cosine",
                     matthew_factor=np.sqrt(0.5),
-                    diff_range=20.0,
+                    diff_range=10.0,
                     # predict_eps_t=True,
                     )
 
@@ -121,12 +213,111 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True):
     for g in range(generations):
         x_g = solver.ask()          # sample new parameters
         f_g = foo(x_g, targets)     # evaluate fitness
-        solver.tell(f_g)            # tell the solver the fitness of the parameters
+
+        x.append(x_g)
+        f.append(f_g)
+
+        # train as a genetic algorithm, i.e., select training dataset from the best individuals
+        solver.diversity_selection = False   # add solutions to the buffer
+        solver.is_genetic_algorithm = True   # train as a genetic algorithm
+        r, solver.elite_ratio = solver.elite_ratio, 0.4  # select 40% of the best individuals
+        solver.tell(f_g)                     # tell the solver the fitness of the parameters, and train DM
+
+        x_g = solver.ask()                   # sample new parameters from GA-HADES
+        f_g = foo(x_g, targets)              # evaluate fitness
+        solver.is_genetic_algorithm = False  # restore to HADES (train DM on fitness-weighted parameters)
+        solver.diversity_selection = True    # use diversity criteria for dataset selection
+        solver.elite_ratio = r               # restore to original elite ratio
+        solver.tell(f_g)                     # tell the solver the fitness of the parameters
 
         # logging
         print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
+
+
+
+    # plotting results
+    plot_3d(x, f)
+
+
+def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True, t_score=0.05, n_refine=100, refine_interval=5):
+    # define the fitness function
+    targets = [[0.1, 4.0, -3.0],
+               [-2., 0.5, -0.25],
+               [1.0, -1., 1.4],
+               ]
+    targets = torch.tensor(targets)
+
+    # define the neural network
+    num_params = len(targets[0])
+    mlp = MLP(num_params=num_params, num_hidden=64, num_layers=3, activation='SiLU', batch_norm=True)
+    mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
+    # define the diffusion model
+    diffuser = DDIM(nn=mlp,
+                    num_steps=1000,
+                    noise_level=1.0,
+                    autoscaling=autoscaling,
+                    sample_uniform=sample_uniform,
+                    alpha_schedule="cosine",
+                    matthew_factor=np.sqrt(0.5),
+                    diff_range=10.0,
+                    # predict_eps_t=True,
+                    )
+
+    # define the evolutionary strategy
+    solver = HADES(num_params=num_params,
+                   model=diffuser,
+                   popsize=popsize,
+                   sigma_init=2.0,
+                   is_genetic_algorithm=False,
+                   selection_pressure=10,
+                   elite_ratio=0.1,
+                   mutation_rate=0.05,
+                   unbiased_mutation_ratio=0.1,
+                   crossover_ratio=0.0,
+                   readaptation=True,
+                   forget_best=True,
+                   diff_lr=0.001,
+                   diff_optim="Adam",
+                   diff_max_epoch=300,
+                   diff_batch_size=256,
+                   diff_weight_decay=1e-6,
+                   buffer_size=5,
+                   diversity_selection=False,
+                   )
+
+    # evolutionary loop
+    x, f = [], []
+    for g in range(generations):
+        x_g = solver.ask()          # sample new parameters
+        f_g = foo(x_g, targets)     # evaluate fitness
+
         x.append(x_g)
         f.append(f_g)
+
+        print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
+        solver.diff_continuous_training = False
+        solver.diversity_selection = False
+        solver.tell(f_g, x_g)
+
+        if not (g + 1) % refine_interval:
+            model = solver.model
+            x_g_refined = x_g.clone()
+            f_g_refined = f_g.clone()
+            sigma, model.sigma = model.sigma, torch.zeros_like(model.sigma)
+            for t in np.linspace(t_score * model.num_steps, 1, n_refine):
+                x_g_refined = model.sample(x_source=x_g_refined, shape=x_g_refined.shape[1:],
+                                             t_start=int(t), **solver.diff_sample_kwargs)
+                _f_g = foo(x_g_refined, targets)  # evaluate fitness
+                improved = _f_g > f_g
+                x_g_refined[improved] = x_g_refined[improved]
+                f_g_refined[improved] = _f_g[improved]
+
+            model.sigma = sigma
+            solver.diff_continuous_training = True
+            solver.diversity_selection = True
+            print(f"               -> annealed: {f_g_refined.max()}, diversity: {diversity(x_g_refined)}")
+            solver.tell(f_g_refined, x_g_refined)
 
     # plotting results
     plot_3d(x, f)
@@ -134,5 +325,9 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True):
 
 if __name__ == "__main__":
     import argh
-    argh.dispatch_commands([hades])
-
+    argh.dispatch_commands([hades,
+                            hades_GA_refined,
+                            hades_score_refined,
+                            # hades_star,
+                            # hades_score_relax,
+                            ])

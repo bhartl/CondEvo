@@ -39,7 +39,6 @@ class CHARLES(HADES):
                  to_numpy: bool = False,
                  buffer_size: int = 4,
                  training_interval: int = 1,
-                 diversity_selection: bool = False,
                  ):
         """ Constructs a CHARLES-Diffusion optimizer.
 
@@ -91,15 +90,13 @@ class CHARLES(HADES):
         :param buffer_size: int, size of the buffer to store the solutions and conditions for training the diffusion
                             model.
         :param training_interval: int, number of generations between training the diffusion model
-        :param diversity_selection: bool, whether to use diversity selection for the buffer. If True, the buffer is
-                                    updated with the best samples from the population by replacing the closest samples
-                                    in the buffer with the new samples. If False, the buffer is updated with the best
-                                    samples from the population by replacing the worst samples in the buffer with the
-                                    new samples.
         """
 
         if model is None or isinstance(model, str):
             model = get_default_model(dm_cls=model, num_params=num_params, num_conditions=len(conditions))
+
+        self.conditions = conditions
+        self.condition_values = None
 
         super().__init__(num_params=num_params,
                          model=model,
@@ -128,11 +125,7 @@ class CHARLES(HADES):
                          to_numpy=to_numpy,
                          buffer_size=buffer_size,
                          training_interval=training_interval,
-                         diversity_selection=diversity_selection,
                          )
-
-        self.conditions = conditions
-        self.condition_values = None
 
     def ask(self):
         """ Sample solutions from the diffusion model.
@@ -177,15 +170,16 @@ class CHARLES(HADES):
     def selection(self):
         x = self.solutions
         fitness = self.fitness
-        conditions = self.evaluate_conditions(x, fitness)
-        self.buffer.push(x, fitness, *conditions)
+        if x is not None:
+            conditions = self.evaluate_conditions(x, fitness)
+            self.buffer.push(x, fitness, *conditions)
 
         # get buffer dataset
         x_dataset = self.buffer.x
         conditions = self.buffer.conditions
 
         # evaluate roulette wheel selection for buffer samples
-        f_dataset = self.buffer['fitness'].flatten()
+        f_dataset = self.buffer.fitness.flatten()
 
         # check for nans (e.g. runaway parameters)
         if torch.isinf(f_dataset).any() or torch.isnan(f_dataset).any():
@@ -207,63 +201,6 @@ class CHARLES(HADES):
             weights_dataset = None  # disable weights for DM training
 
         return (x_dataset, conditions), weights_dataset
-
-    def update_buffer(self, x, fitness):
-        conditions = self.evaluate_conditions(x, fitness)
-
-        if torch.isnan(fitness).any() or torch.isinf(fitness).any():
-            fitness[torch.isnan(fitness)] = -np.infty
-
-        if 'x' not in self.buffer:
-            self.buffer['x'] = x.clone()
-            self.buffer['fitness'] = fitness.clone()
-            self.buffer['conditions'] = tuple(c.clone() for c in conditions)
-
-        else:
-            if self.buffer['x'].shape[0] >= self.buffer_size * self.popsize:
-                # remove nan values from buffer
-                is_nan = torch.isnan(self.buffer['fitness'])
-                num_nan = torch.sum(is_nan)
-                if num_nan:
-                    self.buffer['x'] = self.buffer['x'][~is_nan]
-                    self.buffer['fitness'] = self.buffer['fitness'][~is_nan]
-                    self.buffer['conditions'] = tuple(c[~is_nan] for c in self.buffer['conditions'])
-
-                if not self.diversity_selection:
-                    # remove old samples from buffer with lowest fitness
-                    num_replace = self.popsize - num_nan
-                    indices = self.buffer['fitness'].flatten().argsort()
-                    self.buffer['x'] = self.buffer['x'][indices[num_replace:]]
-                    self.buffer['fitness'] = self.buffer['fitness'][indices[num_replace:]]
-                    self.buffer['conditions'] = tuple(c[indices[num_replace:]] for c in self.buffer['conditions'])
-
-                else:
-                    # replace novel samples by maximizing the diversity of the buffer
-                    indices = []
-                    for xi, fi, *ci in zip(x, fitness, *conditions):
-                        # find the most similar sample in the buffer
-                        distances = torch.cdist(xi.reshape(1, -1), self.buffer['x']).flatten()
-                        # get the index of the most similar sample
-                        for index in distances.argsort()[:3]:
-                            # replace the most similar sample with the new sample, if it is better
-                            if self.buffer['fitness'][index] < fi and index not in indices:
-                                # replace the sample in the buffer
-                                self.buffer['x'][index] = xi
-                                self.buffer['fitness'][index] = fi
-                                for j in range(len(self.buffer['conditions'])):
-                                    # replace the condition in the buffer
-                                    self.buffer['conditions'][j][index] = ci[j]
-
-                                indices += [index]
-                                break
-
-                    self.buffer['replaced'] = torch.tensor(indices)
-
-            self.buffer['x'] = torch.cat((self.buffer['x'], x), dim=0)
-            self.buffer['fitness'] = torch.cat((self.buffer['fitness'], self.fitness), dim=0)
-            self.buffer['conditions'] = tuple(torch.cat((self.buffer['conditions'][i], c), dim=0) for i, c in enumerate(conditions))
-
-        self.log()
 
     def sample_conditions(self, num_samples):
         samples = [c.sample(charles_instance=self, num_samples=num_samples) for c in self.conditions]

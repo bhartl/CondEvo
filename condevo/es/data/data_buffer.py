@@ -12,15 +12,16 @@ class DataBuffer:
     POP_DIVERSITY = "diversity"
     POP_TYPES = [POP_QUALITY, POP_DIVERSITY]
 
-    def __init__(self, max_size: int, num_conditions=0, avoid_nans=True, pop_type=POP_QUALITY):
+    def __init__(self, max_size: int = 0, num_conditions=0, avoid_nans=True, pop_type=POP_QUALITY, shuffle=True):
         """
         Initialize the DataBuffer with a maximum size.
 
-        :param max_size: The maximum size of the buffer.
+        :param max_size: The maximum size of the buffer. No limit if 0.
         """
         self.max_size = max_size
         self.avoid_nans = avoid_nans
         self.pop_type = pop_type
+        self.shuffle = shuffle
         self.buffer = {"x": [], "fitness": [], }
         if num_conditions:
             self.buffer["conditions"] = [[] for _ in range(num_conditions)]
@@ -44,6 +45,7 @@ class DataBuffer:
 
             nan_indices = x_nans | fitness_nans
             for condition_nan in condition_nans:
+                condition_nan = condition_nan.any(dim=1) if condition_nan.ndim > 1 else condition_nan
                 nan_indices = nan_indices | condition_nan
 
             # remove NaN values from x, fitness, and conditions
@@ -51,7 +53,7 @@ class DataBuffer:
             fitness = fitness[~nan_indices]
             conditions = [condition[~nan_indices] for condition in conditions]
 
-        if len(self.buffer["x"]) + len(x) > self.max_size:
+        if self.max_size and len(self.buffer["x"]) + len(x) > self.max_size:
             _, (x, fitness, *conditions) = self.pop(x, fitness, *conditions)
 
         self.buffer["x"].extend([xi for xi in x.clone()])
@@ -106,6 +108,15 @@ class DataBuffer:
         :param conditions: Additional conditions to be added to the buffer.
         """
         num_replace = max([self.size + len(x) - self.max_size, 0])
+
+        if self.shuffle:
+            size = self.size
+            shuffle_indices = randperm(size)
+            self.buffer["x"] = [self.buffer["x"][i] for i in shuffle_indices]
+            self.buffer["fitness"] = [self.buffer["fitness"][i] for i in shuffle_indices]
+            if self.has_conditions:
+                for i, condition in enumerate(self.buffer["conditions"]):
+                    self.buffer["conditions"][i] = [condition[j] for j in shuffle_indices]
 
         # remove old samples from buffer with the lowest fitness
         indices = self.fitness.flatten().argsort()

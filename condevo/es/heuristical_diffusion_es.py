@@ -51,7 +51,6 @@ class HADES:
                  eps: float = 1e-12,
                  buffer_size: Optional[Union[int, dict, DataBuffer]] = 4,
                  training_interval: int = 1,
-                 diversity_selection: bool = False,
                  ):
         """ Constructs a SHADES optimizer.
 
@@ -107,7 +106,6 @@ class HADES:
         :param to_numpy: bool, whether to return the solutions as numpy arrays
         :param buffer_size: int, size of the buffer to store the solutions, fitness and probabilities for training the diffusion model.
         :param training_interval: int, number of sampled generations between retraining the diffusion model.
-        :param diversity_selection: bool, whether to use diversity selection for updating the buffer for the diffusion model training.
         """
 
         self.num_params = num_params
@@ -158,7 +156,6 @@ class HADES:
         self.best_fitness = -torch.inf
 
         self._buffer = None
-        self.diversity_selection = diversity_selection
         self.buffer = buffer_size
 
         self.training_interval = training_interval
@@ -172,14 +169,15 @@ class HADES:
     @buffer.setter
     def buffer(self, value: Union[int, dict, DataBuffer]):
         if isinstance(value, int):
-            pop_type = DataBuffer.POP_QUALITY if not self.diversity_selection else DataBuffer.POP_DIVERSITY
-            self._buffer = DataBuffer(max_size=value * self.popsize, pop_type=pop_type,
-                                      num_conditions=self.model.num_conditions)
+            self._buffer = DataBuffer(max_size=value * self.popsize, num_conditions=self.model.num_conditions)
 
         elif isinstance(value, dict):
             kwargs = dict()
             if 'max_size' in value:
                 kwargs['max_size'] = value.pop('max_size') * self.popsize
+
+            if "num_conditions" not in value:
+                value["num_conditions"] = self.model.num_conditions
 
             self._buffer = DataBuffer(**kwargs, **value)
 
@@ -428,6 +426,10 @@ class HADES:
                 random_noise = (rand(self.num_params) - 0.5) * std * 3.
                 samples[i, :] += random_noise
 
+            if self.model.diff_range is not None:
+                # clip the samples to the parameter range
+                samples[:] = samples.clamp(-self.model.diff_range, self.model.diff_range)
+
         return samples
 
     def get_fitness_argsort(self, reward_table):
@@ -463,7 +465,8 @@ class HADES:
         """ Perform roulette_wheel selection step of current population data. """
         x = self.solutions
         fitness = self.fitness
-        self.buffer.push(x, fitness)
+        if x is not None:
+            self.buffer.push(x, fitness)
 
         # get buffer dataset
         x_dataset = self.buffer.x.clone()

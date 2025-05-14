@@ -3,11 +3,12 @@ import numpy as np
 from condevo.es import HADES, CHARLES
 from condevo.es.guidance import FitnessCondition, KNNNoveltyCondition
 from condevo.nn import MLP
+from condevo.es.data import DataBuffer
 from condevo.diffusion import DDIM, RectFlow
 from condevo.stats import diversity
 
 
-def foo(x, targets, metric='euclidean', amplitude=1.):
+def foo(x, targets, metric='euclidean', amplitude=5.):
     f = torch.zeros(x.shape[0], len(targets), device=x.device)
     for i, target in enumerate(targets):
         if metric == 'euclidean':
@@ -29,11 +30,22 @@ def foo(x, targets, metric='euclidean', amplitude=1.):
         raise NotImplementedError(f"metric {metric} not implemented")
 
 
-def plot_3d(x, f):
+def plot_3d(x, f, targets=None):
     # Plotting: 3D scatter plot of the parameters (colored by fitness) across generations
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
     from matplotlib.animation import FuncAnimation
+
+    if targets is not None:
+        dists = []
+        for i, target in enumerate(targets):
+            dists.append(torch.stack([torch.linalg.norm(xi - target, dim=-1).min() for xi in x]))
+
+        for i, d in enumerate(dists):
+            plt.plot(d, label=f"target {i}", marker=".", linewidth=0)
+
+        plt.xlabel("Generation")
+        plt.ylabel("Distance to target")
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -132,12 +144,11 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is
                    diff_batch_size=256,
                    diff_weight_decay=1e-6,
                    buffer_size=5,
-                   diversity_selection=False,
                    )
 
     # evolutionary loop
     x, f = [], []
-    for g in range(30):
+    for g in range(generations):
         x_g = solver.ask()          # sample new parameters
         f_g = foo(x_g, targets)     # evaluate fitness
         print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
@@ -145,20 +156,8 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is
         x.append(x_g)
         f.append(f_g)
 
-    import matplotlib.pyplot as plt
-
-    dists = []
-    for i, target in enumerate(targets):
-        dists.append(torch.stack([torch.linalg.norm(xi - target, dim=-1).min() for xi in x]))
-
-    for i, d in enumerate(dists):
-        plt.plot(d, label=f"target {i}", marker=".", linewidth=0)
-
-    plt.xlabel("Generation")
-    plt.ylabel("Distance to target")
-
     # plotting results
-    plot_3d(x, f)
+    plot_3d(x, f, targets=targets)
 
 
 def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True):
@@ -171,17 +170,17 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
 
     # define the neural network
     num_params = len(targets[0])
-    mlp = MLP(num_params=num_params, num_hidden=64, num_layers=3, activation='SiLU', batch_norm=True)
+    mlp = MLP(num_params=num_params, num_hidden=24, num_layers=3, activation='ELU', batch_norm=True, dropout=0.05)
     mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
     # define the diffusion model
     diffuser = DDIM(nn=mlp,
                     num_steps=1000,
-                    noise_level=1.0,
+                    noise_level=0.1,
                     autoscaling=autoscaling,
                     sample_uniform=sample_uniform,
                     alpha_schedule="cosine",
-                    matthew_factor=np.sqrt(0.5),
+                    matthew_factor=0.8,  # np.sqrt(0.5),
                     diff_range=10.0,
                     # predict_eps_t=True,
                     )
@@ -201,11 +200,10 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
                    forget_best=True,
                    diff_lr=0.001,
                    diff_optim="Adam",
-                   diff_max_epoch=300,
+                   diff_max_epoch=50,
                    diff_batch_size=256,
                    diff_weight_decay=1e-6,
                    buffer_size=5,
-                   diversity_selection=False,
                    )
 
     # evolutionary loop
@@ -218,7 +216,7 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
         f.append(f_g)
 
         # train as a genetic algorithm, i.e., select training dataset from the best individuals
-        solver.diversity_selection = False   # add solutions to the buffer
+        solver.data_buffer.pop_type = DataBuffer.POP_QUALITY
         solver.is_genetic_algorithm = True   # train as a genetic algorithm
         r, solver.elite_ratio = solver.elite_ratio, 0.4  # select 40% of the best individuals
         solver.tell(f_g)                     # tell the solver the fitness of the parameters, and train DM
@@ -226,17 +224,15 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
         x_g = solver.ask()                   # sample new parameters from GA-HADES
         f_g = foo(x_g, targets)              # evaluate fitness
         solver.is_genetic_algorithm = False  # restore to HADES (train DM on fitness-weighted parameters)
-        solver.diversity_selection = True    # use diversity criteria for dataset selection
+        solver.data_buffer.pop_type = DataBuffer.POP_DIVERSITY    # use diversity criteria for dataset selection
         solver.elite_ratio = r               # restore to original elite ratio
         solver.tell(f_g)                     # tell the solver the fitness of the parameters
 
         # logging
         print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
 
-
-
     # plotting results
-    plot_3d(x, f)
+    plot_3d(x, f, targets=targets)
 
 
 def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True, t_score=0.05, n_refine=100, refine_interval=5):
@@ -255,11 +251,11 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
     # define the diffusion model
     diffuser = DDIM(nn=mlp,
                     num_steps=1000,
-                    noise_level=1.0,
+                    noise_level=0.1,
                     autoscaling=autoscaling,
                     sample_uniform=sample_uniform,
                     alpha_schedule="cosine",
-                    matthew_factor=np.sqrt(0.5),
+                    matthew_factor=0.8,  # np.sqrt(0.5),
                     diff_range=10.0,
                     # predict_eps_t=True,
                     )
@@ -283,7 +279,6 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
                    diff_batch_size=256,
                    diff_weight_decay=1e-6,
                    buffer_size=5,
-                   diversity_selection=False,
                    )
 
     # evolutionary loop
@@ -297,7 +292,7 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
 
         print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
         solver.diff_continuous_training = False
-        solver.diversity_selection = False
+        solver.data_buffer.pop_type = DataBuffer.POP_QUALITY
         solver.tell(f_g, x_g)
 
         if not (g + 1) % refine_interval:
@@ -315,12 +310,12 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
 
             model.sigma = sigma
             solver.diff_continuous_training = True
-            solver.diversity_selection = True
+            solver.data_buffer.pop_type = DataBuffer.POP_DIVERSITY
             print(f"               -> annealed: {f_g_refined.max()}, diversity: {diversity(x_g_refined)}")
             solver.tell(f_g_refined, x_g_refined)
 
     # plotting results
-    plot_3d(x, f)
+    plot_3d(x, f, targets=targets)
 
 
 if __name__ == "__main__":

@@ -139,6 +139,8 @@ class DM(Module):
         if num is not None:
             x_source = self.draw_random(num, *shape)
 
+        self.eval()
+        self.nn.eval()
         sample_vectorized = vmap(self.sample_point, randomness='different')
         x_sampled = sample_vectorized(x_source, *conditions, t_start=t_start)
 
@@ -248,6 +250,7 @@ class DM(Module):
         :return: list, Loss history of the training process.
         """
         self.train()
+        self.nn.train()
 
         if isinstance(optimizer, str):
             optimizer = getattr(optim, optimizer)
@@ -284,7 +287,8 @@ class DM(Module):
             if scheduler is not None:
                 scheduler.step()
 
-        self.eval()
         self.logger.log_scalar("evo/buffer/loss", loss_history[-1], self.logger.generation)
         self.logger.next()
+        self.eval()
+        self.nn.eval()
         return loss_history

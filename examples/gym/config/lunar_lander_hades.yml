@@ -30,8 +30,9 @@ es_config:
   diff_batch_size: 256               # DM: batch size for training the diffusion model
   diff_max_epoch: 200                # DM: number of training steps for the diffusion model at each generation
   diff_continuous_training: False    # DM: continuous training, or retrain diffusion model at each generation
-  buffer_size: 8
-  diversity_selection: False
+  buffer_size:
+    max_size: 8
+    pop_type: quality  # diversity
 diff: DDIM
 diff_config:
   num_steps: 1000

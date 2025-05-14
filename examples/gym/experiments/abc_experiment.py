@@ -220,6 +220,7 @@ class ABCExperiment:
             clip=clip,
             retain_grad=False,
             policy_module=policy_module,
+            parameter_scale=self.agent_kwargs.get("parameter_scale", 1.0),
             **kwargs
         )
 
@@ -307,17 +308,22 @@ class PositionCondition(Condition):
 
     @torch.no_grad()
     def evaluate(self, charles_instance, x, f):
-        # evaluate cart position from log history, array-shape (size x n_episodes)
-        horizon_cart_pos = charles_instance.world_log["observation"][:, :, -self.horizon:,
-                           self.pos_observable]  # (size x n_episodes x steps x features)
+        # evaluate cart position from log history
+        # from array-shape (size x n_episodes x *obs_shape) -> (size x n_episodes x horizon steps x features)
+        horizon_cart_pos = charles_instance.world_log["observation"][:, :, -self.horizon:, self.pos_observable]
+
         horizon_cart_pos = torch.tensor(horizon_cart_pos, device=x.device, dtype=x.dtype)
         mean_cart_pos = self.agg(horizon_cart_pos.mean(dim=2), dim=1)  # mean features, agg over episodes
+        if isinstance(mean_cart_pos, tuple):
+            mean_cart_pos = mean_cart_pos.values
         self.evaluation = mean_cart_pos[charles_instance._fitness_argsort]
         return self.evaluation
 
     def sample(self, charles_instance, num_samples):
-        sigma = (self.target - self.evaluation.mean()).abs().sqrt() * 0.5
-        self.sampling = self.target + torch.randn(num_samples) * sigma
+        sigma = (self.target - self.evaluation.mean()).abs()
+        nearest = (self.evaluation - self.target).abs().argmin()
+        offset = torch.sign(self.target - self.evaluation[nearest]) * 0.125
+        self.sampling = self.evaluation[nearest] + (torch.randn(num_samples) + offset) * 0.1
 
         print(self.label, "evaluation:", self.evaluation.min(), self.evaluation.mean(), self.evaluation.max())
         print(self.label, "sampling  :", self.sampling.min(), self.sampling.mean(), self.sampling.max())

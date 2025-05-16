@@ -1,12 +1,11 @@
 from torch import ones, rand, randn_like, sqrt, arange
 from ..diffusion import DM
-import numpy as np
 
 
 class RectFlow(DM):
     """ Rectified Flow model for `condevo` package. """
 
-    def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., matthew_factor=np.sqrt(0.5),
+    def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., matthew_factor=0.8,
                  param_mean=0.0, param_std=1.0, autoscaling=True, sample_uniform=True, log_dir="", noise_level=0.0):
         """ Initialize the RectFlow model
 
@@ -14,7 +13,7 @@ class RectFlow(DM):
         :param num_steps: int, Number of steps for the diffusion model. Defaults to 100.
         :param diff_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
-        :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.5.
+        :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.8.
         :param param_mean: float, Initial mean of the parameters. Defaults to 0.0.
         :param param_std: float, Initial standard deviation of the parameters. Defaults to 1.0.
         :param autoscaling: bool, Whether to use autoscaling for the sampled parameters before denoising. Defaults to True.

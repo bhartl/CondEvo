@@ -2,8 +2,8 @@ import torch
 import numpy as np
 from condevo.es import HADES, CHARLES
 from condevo.es.guidance import FitnessCondition, KNNNoveltyCondition
-from condevo.nn import MLP
 from condevo.es.data import DataBuffer
+from condevo.nn import MLP
 from condevo.diffusion import DDIM, RectFlow
 from condevo.stats import diversity
 
@@ -216,7 +216,7 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
         f.append(f_g)
 
         # train as a genetic algorithm, i.e., select training dataset from the best individuals
-        solver.data_buffer.pop_type = DataBuffer.POP_QUALITY
+        solver.buffer.pop_type = DataBuffer.POP_QUALITY
         solver.is_genetic_algorithm = True   # train as a genetic algorithm
         r, solver.elite_ratio = solver.elite_ratio, 0.4  # select 40% of the best individuals
         solver.tell(f_g)                     # tell the solver the fitness of the parameters, and train DM
@@ -224,7 +224,7 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
         x_g = solver.ask()                   # sample new parameters from GA-HADES
         f_g = foo(x_g, targets)              # evaluate fitness
         solver.is_genetic_algorithm = False  # restore to HADES (train DM on fitness-weighted parameters)
-        solver.data_buffer.pop_type = DataBuffer.POP_DIVERSITY    # use diversity criteria for dataset selection
+        solver.buffer.pop_type = DataBuffer.POP_DIVERSITY    # use diversity criteria for dataset selection
         solver.elite_ratio = r               # restore to original elite ratio
         solver.tell(f_g)                     # tell the solver the fitness of the parameters
 
@@ -292,7 +292,7 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
 
         print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
         solver.diff_continuous_training = False
-        solver.data_buffer.pop_type = DataBuffer.POP_QUALITY
+        solver.buffer.pop_type = DataBuffer.POP_QUALITY
         solver.tell(f_g, x_g)
 
         if not (g + 1) % refine_interval:
@@ -310,7 +310,7 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
 
             model.sigma = sigma
             solver.diff_continuous_training = True
-            solver.data_buffer.pop_type = DataBuffer.POP_DIVERSITY
+            solver.buffer.pop_type = DataBuffer.POP_DIVERSITY
             print(f"               -> annealed: {f_g_refined.max()}, diversity: {diversity(x_g_refined)}")
             solver.tell(f_g_refined, x_g_refined)
 

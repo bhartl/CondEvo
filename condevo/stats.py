@@ -42,7 +42,7 @@ def distance_matrix(x, y):
     return torch.cdist(x, y)
 
 
-def diversity(x):
+def diversity(x, axis=None):
     """Compute the diversity of a set of points in a given space.
 
     Args:
@@ -54,9 +54,38 @@ def diversity(x):
     dist_matrix = distance_matrix(x, x)
 
     # Compute mean distance
-    mean_distance = dist_matrix.mean()
+    mean_distance = dist_matrix.mean(axis=axis)
 
     return mean_distance
+
+
+def mst_length(X):
+    from sklearn.metrics import pairwise_distances
+    from scipy.sparse.csgraph import minimum_spanning_tree
+    D = pairwise_distances(X)
+    mst = minimum_spanning_tree(D)
+    return mst.sum()
+
+
+def per_point_mst_contributions(X):
+    full_mst = mst_length(X)
+    contributions = []
+    for i in range(len(X)):
+        X_subset = np.delete(X, i, axis=0)
+        mst_without_i = mst_length(X_subset)
+        contributions.append(full_mst - mst_without_i)
+        print(i, full_mst - mst_without_i)
+    return np.array(contributions)
+
+
+def dpp_marginal_diversity(X, gamma=0.5):
+    from sklearn.metrics.pairwise import rbf_kernel
+    if not isinstance(X, np.ndarray):
+        X = X.cpu().numpy()
+
+    L = rbf_kernel(X, gamma=gamma)
+    K = L @ np.linalg.inv(L + np.eye(len(X)))
+    return np.diag(K)
 
 
 def kde_estimate(x, sample_points=None, bandwidth=0.1):

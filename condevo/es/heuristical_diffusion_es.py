@@ -273,7 +273,10 @@ class HADES:
         self.fitness = fitness
         if parameters is not None:
             # update the solutions with the given parameters
-            self.solutions[:] = parameters[fitness_argsort]
+            if self.solutions is None:
+                self.solutions = parameters
+            else:
+                self.solutions[:] = parameters
 
         self._fitness_argsort = fitness_argsort
         self.solutions = self.solutions[fitness_argsort]

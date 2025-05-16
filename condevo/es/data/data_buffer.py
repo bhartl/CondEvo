@@ -53,7 +53,7 @@ class DataBuffer:
             fitness = fitness[~nan_indices]
             conditions = [condition[~nan_indices] for condition in conditions]
 
-        if self.max_size and len(self.buffer["x"]) + len(x) > self.max_size:
+        if self.max_size and (len(self.buffer["x"]) + len(x) > self.max_size):
             _, (x, fitness, *conditions) = self.pop(x, fitness, *conditions)
 
         self.buffer["x"].extend([xi for xi in x.clone()])
@@ -64,6 +64,9 @@ class DataBuffer:
                 self.buffer["conditions"][i].extend([ci for ci in condition.clone()])
 
     def  pop(self, x: Tensor, fitness: Tensor, *conditions: Tensor) -> Union[tuple, None]:
+        if not self.max_size:
+            return (None, None, None), (x, fitness, *conditions)
+
         if self.pop_type == self.POP_QUALITY:
             remove, replace = self.pop_quality(x, fitness, *conditions)
 
@@ -171,6 +174,9 @@ class DataBuffer:
 
         :return: The data in the buffer.
         """
+        if not len(self.buffer["x"]):
+            return ()
+
         return stack(self.buffer["x"])
 
     @x.setter
@@ -189,6 +195,9 @@ class DataBuffer:
 
         :return: The fitness scores in the buffer.
         """
+        if not len(self.buffer["fitness"]):
+            return ()
+
         return stack(self.buffer["fitness"])
 
     @fitness.setter
@@ -210,7 +219,8 @@ class DataBuffer:
         if "conditions" not in self.buffer:
             return None
 
-        return tuple(stack(condition) for condition in self.buffer["conditions"] if condition)
+        return tuple((stack(condition) if len(condition) else Tensor())
+                     for condition in self.buffer["conditions"] if condition)
 
     @conditions.setter
     def conditions(self, value: Union[list, tuple]):

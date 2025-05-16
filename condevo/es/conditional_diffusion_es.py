@@ -200,6 +200,9 @@ class CHARLES(HADES):
             conditions = tuple(c[selected_genotypes] for c in conditions)
             weights_dataset = None  # disable weights for DM training
 
+        else:
+            weights_dataset = weights_dataset / weights_dataset.max()
+
         return (x_dataset, conditions), weights_dataset
 
     def sample_conditions(self, num_samples):

@@ -81,7 +81,7 @@ def plot_3d(x, f, targets=None):
     plt.show()
 
 
-def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is_genetic=False, diffuser="DDIM"):
+def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is_genetic=False, diffuser="DDIM", tensorboard=False):
     # define the fitness function
     targets = [[0.1, 4.0, -3.0],
                [-2., 0.5, -0.25],
@@ -111,6 +111,7 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is
                         matthew_factor=0.8, # np.sqrt(0.5),
                         diff_range=10.0,
                         # predict_eps_t=True,
+                        log_dir="data/logs/hades" * tensorboard,
                         )
 
     else:
@@ -138,10 +139,10 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is
                    crossover_ratio=0.0,
                    readaptation=True,
                    forget_best=True,
-                   diff_lr=0.003,
+                   diff_lr=0.03,
                    diff_optim="Adam",
-                   diff_max_epoch=300,
-                   diff_batch_size=256,
+                   diff_max_epoch=100,
+                   diff_batch_size=32,
                    diff_weight_decay=1e-6,
                    buffer_size=5,
                    )
@@ -160,7 +161,7 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is
     plot_3d(x, f, targets=targets)
 
 
-def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True):
+def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True, tensorboard=False):
     # define the fitness function
     targets = [[0.1, 4.0, -3.0],
                [-2., 0.5, -0.25],
@@ -182,7 +183,7 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
                     alpha_schedule="cosine",
                     matthew_factor=0.8,  # np.sqrt(0.5),
                     diff_range=10.0,
-                    # predict_eps_t=True,
+                    log_dir="data/logs/refined/hades" * tensorboard,
                     )
 
     # define the evolutionary strategy
@@ -192,7 +193,7 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
                    sigma_init=2.0,
                    is_genetic_algorithm=False,
                    selection_pressure=10,
-                   elite_ratio=0.1,
+                   elite_ratio=0.9,
                    mutation_rate=0.05,
                    unbiased_mutation_ratio=0.1,
                    crossover_ratio=0.0,
@@ -200,7 +201,7 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
                    forget_best=True,
                    diff_lr=0.001,
                    diff_optim="Adam",
-                   diff_max_epoch=50,
+                   diff_max_epoch=100,
                    diff_batch_size=256,
                    diff_weight_decay=1e-6,
                    buffer_size=5,
@@ -219,6 +220,8 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
         solver.buffer.pop_type = DataBuffer.POP_QUALITY
         solver.is_genetic_algorithm = True   # train as a genetic algorithm
         r, solver.elite_ratio = solver.elite_ratio, 0.4  # select 40% of the best individuals
+        if tensorboard:
+            solver.model.logger.log_dir = "data/logs/refined/genetic"
         solver.tell(f_g)                     # tell the solver the fitness of the parameters, and train DM
 
         x_g = solver.ask()                   # sample new parameters from GA-HADES
@@ -226,6 +229,8 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
         solver.is_genetic_algorithm = False  # restore to HADES (train DM on fitness-weighted parameters)
         solver.buffer.pop_type = DataBuffer.POP_DIVERSITY    # use diversity criteria for dataset selection
         solver.elite_ratio = r               # restore to original elite ratio
+        if tensorboard:
+            solver.model.logger.log_dir = "data/logs/refined/hades"
         solver.tell(f_g)                     # tell the solver the fitness of the parameters
 
         # logging
@@ -235,7 +240,7 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
     plot_3d(x, f, targets=targets)
 
 
-def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True, t_score=0.05, n_refine=100, refine_interval=5):
+def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True, t_score=0.05, n_refine=100, refine_interval=1, tensorboard=False):
     # define the fitness function
     targets = [[0.1, 4.0, -3.0],
                [-2., 0.5, -0.25],
@@ -258,6 +263,7 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
                     matthew_factor=0.8,  # np.sqrt(0.5),
                     diff_range=10.0,
                     # predict_eps_t=True,
+                    log_dir="data/logs/score" * tensorboard,
                     )
 
     # define the evolutionary strategy
@@ -275,7 +281,7 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
                    forget_best=True,
                    diff_lr=0.001,
                    diff_optim="Adam",
-                   diff_max_epoch=300,
+                   diff_max_epoch=100,
                    diff_batch_size=256,
                    diff_weight_decay=1e-6,
                    buffer_size=5,
@@ -323,6 +329,4 @@ if __name__ == "__main__":
     argh.dispatch_commands([hades,
                             hades_GA_refined,
                             hades_score_refined,
-                            # hades_star,
-                            # hades_score_relax,
                             ])

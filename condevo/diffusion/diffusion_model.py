@@ -267,11 +267,14 @@ class DM(Module):
         training_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
         # log dataset
+        self.logger.next()
         # self.logger.log_dataset(x, weights, *conditions)
 
         loss_history = []
+        best_model = None
+        best_loss = torch.inf
         for epoch in tqdm(range(int(max_epoch))):
-            batch_loss = 0
+            epoch_loss = 0
             for x_batch, *c_batch, w_batch in training_dataloader:
                 optimizer.zero_grad()
                 v, v_pred = self.eval_val_pred(x_batch, *c_batch)
@@ -279,16 +282,24 @@ class DM(Module):
                 reg_loss = self.regularize(x_batch, w_batch, *c_batch)
                 loss = (loss + reg_loss).mean()
                 loss.backward()
-                batch_loss = batch_loss + loss.item()
+                epoch_loss = epoch_loss + loss.item()
                 optimizer.step()
 
-            batch_loss = batch_loss/batch_size
-            loss_history.append(batch_loss)
+            self.logger.log_scalar(f"Loss/Train", epoch_loss, epoch)
+            epoch_loss = epoch_loss/batch_size
+            loss_history.append(epoch_loss)
             if scheduler is not None:
                 scheduler.step()
 
-        self.logger.log_scalar("evo/buffer/loss", loss_history[-1], self.logger.generation)
-        self.logger.next()
+            if epoch_loss < best_loss:
+                best_loss = epoch_loss
+                best_model = self.nn.state_dict()
+
+        # load best model
+        if best_model is not None:
+            self.nn.load_state_dict(best_model)
+
+        self.logger.log_scalar(f"Loss/Generation", best_loss, self.logger.generation)
         self.eval()
         self.nn.eval()
         return loss_history

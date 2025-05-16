@@ -300,19 +300,6 @@ class HADES:
         self._asked += 1
         return self.loss
 
-    def log(self):
-        logger = self.model.logger
-        if logger is None:
-            return
-
-        logger.log_scalar("evo/population/best", self.fitness.max(), logger.generation)
-        logger.log_scalar("evo/population/mean", self.fitness.mean(), logger.generation)
-        logger.log_scalar("evo/population/std", self.fitness.std(), logger.generation)
-
-        logger.log_scalar("evo/buffer/best", self.buffer.fitness.max(), logger.generation)
-        logger.log_scalar("evo/buffer/mean", self.buffer.fitness.mean(), logger.generation)
-        logger.log_scalar("evo/buffer/std", self.buffer.fitness.std(), logger.generation)
-
     def sample(self, num_samples=None, *conditions):
         """ Sample solutions from the diffusion model and from crossover.
 
@@ -414,7 +401,7 @@ class HADES:
             mutated_samples = samples[mutate_indices]
             mutated_samples, _ = self.model.diffuse(mutated_samples, t=t_diffuse)
 
-        if self.readaptation:
+        for _ in range(int(self.readaptation)):
             # refine the diffused/mutated samples by applying denoising for a few steps
             adaptive_diff_steps = int(np.rint(t_diffuse * (self.model.num_steps - 1)))  # be careful about T max
             samples = self.model.sample(x_source=samples, shape=(self.num_params,),
@@ -493,9 +480,8 @@ class HADES:
             x_dataset = x_dataset[selected_genotypes]
             weights_dataset = None  # disable weights for DM training
 
-        # else:
-        #     # renormalize weights to max. value of 1.
-        #     weights_dataset = weights_dataset / weights_dataset.max()
+        else:
+            weights_dataset = weights_dataset / weights_dataset.max()
 
         return x_dataset, weights_dataset
 
@@ -509,7 +495,40 @@ class HADES:
             self.model.init_nn()
 
         loss = self.model.fit(dataset, weights=weights, **self.diff_kwargs)
+        self.log()
         return loss
+
+    def log(self):
+        logger = self.model.logger
+        if logger is None:
+            return
+
+        try:
+            logger.log_scalar("Fitness/Best", self.fitness.max(), logger.generation)
+            logger.log_scalar("Fitness/Mean", self.fitness.mean(), logger.generation)
+            logger.log_scalar("Fitness/STD", self.fitness.std(), logger.generation)
+
+        except:
+            pass
+
+        try:
+            from ..stats import diversity
+            diversity = diversity(self.solutions)
+            logger.log_scalar("Diversity/Population", diversity, logger.generation)
+        except:
+            pass
+
+        fitness = self.buffer.fitness
+        logger.log_scalar("Buffer/Best", fitness.max(), logger.generation)
+        logger.log_scalar("Buffer/Mean", fitness.mean(), logger.generation)
+        logger.log_scalar("Buffer/STD", fitness.std(), logger.generation)
+
+        try:
+            from ..stats import diversity
+            diversity = diversity(self.buffer.x)
+            logger.log_scalar("Diversity/Buffer", diversity, logger.generation)
+        except:
+            pass
 
     @property
     def diff_kwargs(self):
@@ -519,31 +538,6 @@ class HADES:
                     lr=self.diff_lr,
                     weight_decay=self.diff_weight_decay,
                     batch_size=self.diff_batch_size)
-
-    def optimize(self,
-                 objective_function: callable,
-                 num_steps: int = 20,
-                 track_history: bool = True,
-                 temperature_range: tuple = (1.0, 0.5),
-                 ):
-
-        """ A wrapper to optimize the objective function. """
-
-        history = {"samples": [], "fitness": []}
-        temperatures = np.linspace(*temperature_range, num_steps)
-        for temperature in temperatures:
-            solutions = self.ask()
-            fitness = objective_function(solutions)
-            self.fitness_temperature = temperature
-            self.tell(fitness)
-            if track_history:
-                history["samples"].append(self.solutions.clone())
-                history["fitness"].append(self.fitness.clone())
-
-        if track_history:
-            return history
-
-        return self.solutions[0].clone(), self.fitness[0].clone()
 
     def result(self):
         """ return best params so far, along with historically best reward, curr reward, curr reward STD. """

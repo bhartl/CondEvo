@@ -10,7 +10,7 @@ class DDIM(DM):
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
                  diff_range=None, lambda_range=0., predict_eps_t=False, param_mean=0.0, param_std=1.0,
                  alpha_schedule="linear", matthew_factor=0.8, sample_uniform=True, autoscaling=True,
-                 log_dir="",
+                 log_dir="", normalize_steps=False, diff_range_filter=True,
                  ):
         """ Initialize the DDIM model
 
@@ -19,6 +19,8 @@ class DDIM(DM):
         :param skip_connection: bool, Using skip connections for the diffusion model error estimate. Defaults to True.
         :param noise_level: float, Noise level for the diffusion model. Defaults to 1.0.
         :param diff_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
+        :param diff_range_filter: bool, Whether to filter the training data for exceeding the parameter range
+                                  (any dimension larger than diff_range). Defaults to True.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
         :param predict_eps_t: bool, Whether to predicting the noise `eps_t` for a given `xt` and `t`, or
                               or the total noise `eps` as if `t==T` for a given `xt`. Defaults to False (total noise).
@@ -28,8 +30,9 @@ class DDIM(DM):
         # call the base class constructor, sets nn and num_steps attributes
         super(DDIM, self).__init__(nn=nn, num_steps=num_steps, diff_range=diff_range, lambda_range=lambda_range,
                                    param_mean=param_mean, param_std=param_std, sample_uniform=sample_uniform,
-                                   autoscaling=autoscaling, log_dir=log_dir)
+                                   autoscaling=autoscaling, log_dir=log_dir, diff_range_filter=diff_range_filter)
         self.skip_connection = skip_connection
+        self.normalize_steps = normalize_steps
 
         # DDIM parameters
         self.alpha = None
@@ -69,6 +72,10 @@ class DDIM(DM):
         `xt` is x0 after diffusion and `t` is the time step. `t` is the
         time, which is in the range of [0, 1].
         """
+
+        if self.normalize_steps:
+            t = t / self.num_steps
+
         y = super().forward(xt.clone(), t, *conditions)
         if self.skip_connection:
             return y + xt

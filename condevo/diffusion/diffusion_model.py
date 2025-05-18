@@ -11,7 +11,7 @@ class DM(Module):
     """ Diffusion Model base-class for condevo package. """
 
     def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., param_mean=0.0, param_std=1.0,
-                 epsilon=1e-8, log_dir="", sample_uniform=True, autoscaling=True):
+                 epsilon=1e-8, log_dir="", sample_uniform=True, autoscaling=True, diff_range_filter=True):
         """ Initialize the Diffusion Model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model. Needs to have a `_build_model` method.
@@ -20,6 +20,8 @@ class DM(Module):
         :param diff_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
                            The diffusion model will also scale the input tensor to the standard normal distribution
                            of the given training data upon calling the `fit` method.
+        :param diff_range_filter: bool, Whether to filter the training data for exceeding the parameter range
+                                  (any dimension larger than diff_range). Defaults to True.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
         :param param_mean: float, Initial mean of the training data for the standard scaler. Defaults to 0.
         :param param_std: float, Initial standard deviation of the training data for the standard scaler. Defaults to 1.
@@ -37,6 +39,7 @@ class DM(Module):
         self.nn = nn
 
         self.diff_range = diff_range
+        self.diff_range_filter = diff_range_filter
         self.lambda_range = lambda_range
 
         self.param_mean = param_mean
@@ -194,7 +197,7 @@ class DM(Module):
     def exceeds_diff_range(self, x):
         """ If the parameter range is specified, evaluate the exceed of the parameter range (via ReLU),
             otherwise return zeros tensor. """
-        if self.diff_range is None:
+        if self.diff_range in [None, 0]:
             return zeros_like(x[:, 0])
 
         # evaluate the exceed of the parameter range (via ReLU)
@@ -217,11 +220,12 @@ class DM(Module):
                 weights = weights[~nan_weights]
 
         # check for exceeding parameter range
-        exceeding_x = self.exceeds_diff_range(x) > 0
-        if exceeding_x.any():
-            x = x[~exceeding_x]
-            conditions = [c[~exceeding_x] for c in conditions]
-            weights = weights[~exceeding_x]
+        if self.diff_range_filter and self.diff_range not in [None, 0]:
+            exceeding_x = self.exceeds_diff_range(x) > 0
+            if exceeding_x.any():
+                x = x[~exceeding_x]
+                conditions = [c[~exceeding_x] for c in conditions]
+                weights = weights[~exceeding_x]
 
         self.param_mean = x.mean(dim=0, keepdim=True)
         self.param_std = x.std(dim=0, keepdim=True)

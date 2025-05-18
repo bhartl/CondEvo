@@ -6,12 +6,15 @@ class RectFlow(DM):
     """ Rectified Flow model for `condevo` package. """
 
     def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., matthew_factor=0.8,
-                 param_mean=0.0, param_std=1.0, autoscaling=True, sample_uniform=True, log_dir="", noise_level=0.0):
+                 param_mean=0.0, param_std=1.0, autoscaling=True, sample_uniform=True, log_dir="", noise_level=0.0,
+                 diff_range_filter=True, ):
         """ Initialize the RectFlow model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
         :param num_steps: int, Number of steps for the diffusion model. Defaults to 100.
         :param diff_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
+        :param diff_range_filter: bool, Whether to filter the training data for exceeding the parameter range
+                                  (any dimension larger than diff_range). Defaults to True.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
         :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.8.
         :param param_mean: float, Initial mean of the parameters. Defaults to 0.0.
@@ -24,7 +27,8 @@ class RectFlow(DM):
         super(RectFlow, self).__init__(nn=nn, num_steps=num_steps,
                                        diff_range=diff_range, lambda_range=lambda_range,
                                        param_mean=param_mean, param_std=param_std, autoscaling=autoscaling,
-                                       sample_uniform=sample_uniform, log_dir=log_dir)
+                                       sample_uniform=sample_uniform, log_dir=log_dir,
+                                       diff_range_filter=diff_range_filter)
         self.matthew_factor = matthew_factor
         self.noise_level = noise_level
 

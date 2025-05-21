@@ -81,11 +81,66 @@ def plot_3d(x, f, targets=None):
     plt.show()
 
 
-def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is_genetic=False, diffuser="DDIM", tensorboard=False):
+def plot_2d(x, f, targets=None):
+    # Plotting: 3D scatter plot of the parameters (colored by fitness) across generations
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation
+
+    if targets is not None:
+        dists = []
+        for i, target in enumerate(targets):
+            dists.append(torch.stack([torch.linalg.norm(xi - target, dim=-1).min() for xi in x]))
+
+        for i, d in enumerate(dists):
+            plt.plot(d, label=f"target {i}", marker=".", linewidth=0)
+
+        plt.xlabel("Generation")
+        plt.ylabel("Distance to target")
+
+    fig = plt.figure()
+    ax = plt.gca()
+    # Initialize the scatter plot
+    scatter = ax.scatter([], [], c='b', marker='o')
+
+    # Set axis limits
+    ax.set_xlim(-10, 10)
+    ax.set_ylim(-10, 10)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+
+    # Update function for animation
+    def update(frame):
+        # set the data for the scatter plot
+        x_t, y_t = x[frame].T
+        scatter.set_offsets(np.c_[x_t.numpy(), y_t.numpy()])
+
+        # color by fitness
+        f_frame = f[frame]
+        scatter.set_array(f_frame.numpy())
+
+        ax.set_title(f"Frame {frame}")
+        return scatter,
+
+    # Create the animation
+    ani = FuncAnimation(fig, update, frames=len(x), interval=100, blit=False)
+
+    # Show the animation
+    plt.show()
+
+
+def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
+          is_genetic=False, diffuser="DDIM", tensorboard=False,
+          score_refinement=10, refinement_generation_threshold=10,
+          ):
     # define the fitness function
-    targets = [[0.1, 4.0, -3.0],
-               [-2., 0.5, -0.25],
-               [1.0, -1., 1.4],
+    # targets = [[0.1, 4.0, -3.0],
+    #            [-2., 0.5, -0.25],
+    #            [1.0, -1., 1.4],
+    #            ]
+    #
+    targets = [[0.1, 4.0, ],
+               [-2., 0.5, ],
+               [1.0, -1., ],
                ]
 
     # targets = [
@@ -97,32 +152,34 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is
 
     # define the neural network
     num_params = len(targets[0])
-    mlp = MLP(num_params=num_params, num_hidden=64, num_layers=3, activation='SiLU', batch_norm=True)
-    mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+    mlp = MLP(num_params=num_params, num_hidden=32, num_layers=6, activation='SiLU', batch_norm=True)
+    # mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
     if diffuser == "DDIM":
         # define the diffusion model
         diffuser = DDIM(nn=mlp,
-                        num_steps=1000,
-                        noise_level=0.1,
+                        num_steps=100,
+                        noise_level=1.0,
                         autoscaling=autoscaling,
                         sample_uniform=sample_uniform,
                         alpha_schedule="cosine",
-                        matthew_factor=0.8, # np.sqrt(0.5),
+                        matthew_factor=np.sqrt(0.5),
                         diff_range=10.0,
                         # predict_eps_t=True,
                         log_dir="data/logs/hades" * tensorboard,
+                        normalize_steps=False,
                         )
 
     else:
         # define the fect flow
         diffuser = RectFlow(nn=mlp,
-                            num_steps=100,
-                            noise_level=0.1,
+                            num_steps=300,
+                            noise_level=1.0,
                             autoscaling=autoscaling,
                             sample_uniform=sample_uniform,
-                            matthew_factor=0.8,  # np.sqrt(0.5),
+                            matthew_factor=np.sqrt(0.5),
                             diff_range=10.0,
+                            log_dir="data/logs/hades_RF" * tensorboard,
                             )
 
     # define the evolutionary strategy
@@ -133,23 +190,38 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is
                    is_genetic_algorithm=is_genetic,
                    selection_pressure=10,
                    adaptive_selection_pressure=False,            # chose seletion_pressure such that `elite_ratio` individuals have cumulative probability
-                   elite_ratio=0.1 if not is_genetic else 0.4,
-                   mutation_rate=0.05,
-                   unbiased_mutation_ratio=0.1,
+                   ###########################################
+                   ## free sampling
+                   elite_ratio=0.,                 # 0.1 if not is_genetic else 0.4,
+                   mutation_rate=0.,               # 0.05
+                   unbiased_mutation_ratio=0.,     # 0.1
+                   ###########################################
+                   ###########################################
+                   # protect locals
+                   # elite_ratio=0.1 if not is_genetic else 0.4,
+                   # mutation_rate=0.05,
+                   # unbiased_mutation_ratio=0.1,
+                   ###########################################
+                   random_mutation_ratio=0.0625,
                    crossover_ratio=0.0,
-                   readaptation=True,
+                   readaptation=False,
                    forget_best=True,
-                   diff_lr=0.03,
+                   diff_lr=0.003,
                    diff_optim="Adam",
                    diff_max_epoch=100,
-                   diff_batch_size=32,
+                   diff_batch_size=256,
                    diff_weight_decay=1e-6,
-                   buffer_size=5,
+                   buffer_size=0,
+                   diff_continuous_training=False,
                    )
 
     # evolutionary loop
     x, f = [], []
     for g in range(generations):
+        if g > refinement_generation_threshold and score_refinement:
+            solver.unbiased_mutation_ratio = 1e-6
+            solver.readaptation = score_refinement
+
         x_g = solver.ask()          # sample new parameters
         f_g = foo(x_g, targets)     # evaluate fitness
         print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
@@ -157,8 +229,126 @@ def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, is
         x.append(x_g)
         f.append(f_g)
 
-    # plotting results
-    plot_3d(x, f, targets=targets)
+    if num_params == 3:
+        # plotting results
+        plot_3d(x, f, targets=targets)
+
+    else:
+        # plotting results
+        plot_2d(x, f, targets=targets)
+
+
+def charles(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
+            is_genetic=False, diffuser="DDIM", tensorboard=False,
+            score_refinement=0, refinement_generation_threshold=10,
+            disable_knn_condition=False, disable_fitness_condition=False,
+            diff_continuous_training=False,
+            ):
+    # define the fitness function
+    targets = [[0.1, 4.0, -3.0],
+               [-2., 0.5, -0.25],
+               [1.0, -1., 1.4],
+               ]
+
+    # targets = [[0.1, 4.0, ],
+    #            [-2., 0.5, ],
+    #            [1.0, -1., ],
+    #            ]
+
+    # targets = [
+    #     [10.332, 20.044, 10.399, ],
+    #     [-10.418, 10.795, -20.232, ],
+    #     [0.897, -10.847, -20.126,],
+    # ]
+    targets = torch.tensor(targets)
+
+    conditions = []
+    # define the KNN novelty condition
+    if not disable_knn_condition:
+        knn_condition = KNNNoveltyCondition(k=popsize//len(targets), metric=2, beta=10., weight_by_fitness=True, eps=1e-8)
+        conditions.append(knn_condition)
+
+    if not disable_fitness_condition:
+        fitness_condition = FitnessCondition(scale=1.0, greedy=False)
+        conditions.append(fitness_condition)
+
+    # define the neural network
+    num_params = len(targets[0])
+    mlp = MLP(num_params=num_params, num_hidden=32, num_layers=6, activation='SiLU', batch_norm=True,
+              num_conditions=len(conditions))
+    # mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
+    if diffuser == "DDIM":
+        # define the diffusion model
+        diffuser = DDIM(nn=mlp,
+                        num_steps=100,
+                        noise_level=1.0,
+                        autoscaling=autoscaling,
+                        sample_uniform=sample_uniform,
+                        alpha_schedule="linear",
+                        matthew_factor=np.sqrt(0.5),
+                        diff_range=10.0,
+                        # predict_eps_t=True,
+                        log_dir="data/logs/charles" * tensorboard,
+                        normalize_steps=True,
+                        )
+
+    else:
+        # define the fect flow
+        diffuser = RectFlow(nn=mlp,
+                            num_steps=300,
+                            noise_level=0.2,
+                            autoscaling=autoscaling,
+                            sample_uniform=sample_uniform,
+                            matthew_factor=np.sqrt(0.5),
+                            diff_range=10.0,
+                            )
+
+    # define the evolutionary strategy
+    solver = CHARLES(num_params=num_params,
+                   model=diffuser,
+                   popsize=popsize,
+                   sigma_init=2.0,
+                   is_genetic_algorithm=is_genetic,
+                   selection_pressure=10,
+                   adaptive_selection_pressure=False,            # chose seletion_pressure such that `elite_ratio` individuals have cumulative probability
+                   elite_ratio=0.2 if not is_genetic else 0.4,
+                   mutation_rate=0.05,
+                   unbiased_mutation_ratio=0.1,
+                   crossover_ratio=0.0,
+                   readaptation=False,
+                   forget_best=True,
+                   diff_lr=0.003,
+                   diff_optim="Adam",
+                   diff_max_epoch=100,
+                   diff_batch_size=256,
+                   diff_weight_decay=1e-6,
+                   buffer_size=0,
+                   diff_continuous_training=diff_continuous_training,
+                   conditions=conditions
+                   )
+
+    # evolutionary loop
+    x, f = [], []
+    for g in range(generations):
+        if g > refinement_generation_threshold and score_refinement:
+            solver.unbiased_mutation_ratio = 1e-6
+            solver.readaptation = score_refinement
+
+        x_g = solver.ask()          # sample new parameters
+        f_g = foo(x_g, targets)     # evaluate fitness
+        print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
+        solver.tell(f_g)            # tell the solver the fitness of the parameters
+        x.append(x_g)
+        f.append(f_g)
+
+    if num_params == 3:
+        # plotting results
+        plot_3d(x, f, targets=targets)
+
+    else:
+        # plotting results
+        plot_2d(x, f, targets=targets)
 
 
 def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True, tensorboard=False):
@@ -171,17 +361,17 @@ def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_unifo
 
     # define the neural network
     num_params = len(targets[0])
-    mlp = MLP(num_params=num_params, num_hidden=24, num_layers=3, activation='ELU', batch_norm=True, dropout=0.05)
+    mlp = MLP(num_params=num_params, num_hidden=32, num_layers=6, activation='SiLU', batch_norm=True)
     mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
     # define the diffusion model
     diffuser = DDIM(nn=mlp,
-                    num_steps=1000,
-                    noise_level=0.1,
+                    num_steps=100,
+                    noise_level=1.0,
                     autoscaling=autoscaling,
                     sample_uniform=sample_uniform,
                     alpha_schedule="cosine",
-                    matthew_factor=0.8,  # np.sqrt(0.5),
+                    matthew_factor=np.sqrt(0.5),
                     diff_range=10.0,
                     log_dir="data/logs/refined/hades" * tensorboard,
                     )
@@ -327,6 +517,7 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
 if __name__ == "__main__":
     import argh
     argh.dispatch_commands([hades,
+                            charles,
                             hades_GA_refined,
                             hades_score_refined,
                             ])

@@ -1,9 +1,18 @@
-from torch import Tensor, cat, randn, multinomial, cdist, sort, stack, exp, log
+from torch import Tensor, cat, randn, multinomial, cdist, sort, stack, exp, log, no_grad
 from . import Condition
 
 
 class KNNNoveltyCondition(Condition):
     def __init__(self, k=10, metric=2.0, beta=10., weight_by_fitness=True, eps=1e-8):
+        """ KNNNoveltyCondition constructor.
+
+        :param k: int, number of nearest neighbors to consider
+        :param metric: float, distance metric to use (default is 2.0 for Euclidean distance)
+        :param beta: float, parameter for the Boltzmann distribution
+        :param weight_by_fitness: bool, whether to weight the novelty score by fitness
+        :param eps: float, small value to avoid division by zero
+        """
+
         Condition.__init__(self)
         self.k = k
         self.metric = metric
@@ -25,20 +34,19 @@ class KNNNoveltyCondition(Condition):
 
         return stack(novelty_scores)
 
+    @no_grad()
     def evaluate(self, charles_instance, x, f):
-        has_buffer = "x" in charles_instance.buffer
-        all_x = x
-        if has_buffer:
-            buffered_x = charles_instance.buffer["x"]
-            all_x = cat([x, buffered_x])
+        all_x = x.clone()
+        if charles_instance.buffer.size:
+            buffered_x = charles_instance.buffer.x
+            all_x = cat([all_x, buffered_x])
 
         # evaluate novelty score of all x to all x (of new samples and buffer solutions)
         novelty_scores = self.novelty_score(all_x, all_x)
 
-        if has_buffer:
-            # workaround: update old conditions, should be done within CHARLES, TODO
-            condition_num = [i for i, c in enumerate(charles_instance.conditions) if c is self][0]
-            charles_instance.buffer["conditions"][condition_num][:] = novelty_scores[len(x):, None]
+        if charles_instance.buffer.size:
+            ci = self.get_index(charles_instance)
+            charles_instance.buffer["conditions"][ci] = [s[None, ...] for s in novelty_scores[len(x):]]
 
         # return new scores
         novelty_scores = novelty_scores[:len(x)]
@@ -73,10 +81,12 @@ class KNNNoveltyCondition(Condition):
         probabilities = exp_scores / exp_scores.sum()
         return probabilities
 
+    @no_grad()
     def sample(self, charles_instance, num_samples):
         # sample target quadrant
-        c = [charles_instance.buffer["conditions"][i] for i, c in enumerate(charles_instance.conditions) if c is self][0]
-        f = charles_instance.buffer["fitness"]
+        ci = self.get_index(charles_instance)
+        c = charles_instance.buffer.get_condition(ci)
+        f = charles_instance.buffer.fitness
 
         # draw from Boltzmann distribution
         p = self.boltzmann_selection(novelty_scores=c.flatten(), fitness_scores=f, beta=self.beta)

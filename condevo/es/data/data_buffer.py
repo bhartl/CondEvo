@@ -225,6 +225,18 @@ class DataBuffer:
         return tuple((stack(condition) if len(condition) else Tensor())
                      for condition in self.buffer["conditions"] if condition)
 
+    def get_condition(self, index):
+        """
+        Get the condition at a specific index.
+
+        :param index: The index of the condition to be retrieved.
+        :return: The condition at the specified index.
+        """
+        if "conditions" not in self.buffer:
+            return None
+
+        return stack(self.buffer["conditions"][index]) if len(self.buffer["conditions"][index]) else Tensor()
+
     @conditions.setter
     def conditions(self, value: Union[list, tuple]):
         """

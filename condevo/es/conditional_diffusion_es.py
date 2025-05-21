@@ -206,7 +206,7 @@ class CHARLES(HADES):
         return (x_dataset, conditions), weights_dataset
 
     def sample_conditions(self, num_samples):
-        samples = [c.sample(charles_instance=self, num_samples=num_samples) for c in self.conditions]
+        samples = [c.sample(charles_instance=self, num_samples=num_samples) for i, c in enumerate(self.conditions)]
         for i in range(len(samples)):
             if samples[i].dim() == 1:
                 samples[i] = samples[i].reshape(-1, 1)
@@ -220,6 +220,9 @@ class CHARLES(HADES):
 
         self.condition_values = tuple(conditions)
         return self.condition_values
+
+    def transform_conditions(self, values):
+        return [c.transform(charles_instance=self, values=v) for c, v in zip(self.conditions, values)]
 
     @property
     def elite_conditions(self):
@@ -237,4 +240,5 @@ class CHARLES(HADES):
             self.model.init_nn()
 
         x, conditions = dataset
-        return self.model.fit(x, *conditions, weights=weights, **self.diff_kwargs)
+        training_conditions = self.transform_conditions(conditions)
+        return self.model.fit(x, *training_conditions, weights=weights, **self.diff_kwargs)

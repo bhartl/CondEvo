@@ -131,10 +131,10 @@ class DM(Module):
             torch.tensor: Sampled points from the diffusion model.
         """
         if (num is None) and (x_source is None):
-            raise ValueError("Either `num` or `xt` should be specified")
+            raise ValueError("Either `num` or `x_source` should be specified")
 
         if (num is not None) and (x_source is not None):
-            raise ValueError("Only one of `num` and `xt` should be specified")
+            raise ValueError("Only one of `num` and `x_source` should be specified")
 
         if conditions is None:
             conditions = tuple()

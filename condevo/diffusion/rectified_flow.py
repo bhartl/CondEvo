@@ -1,4 +1,4 @@
-from torch import ones, rand, randn_like, sqrt, arange
+from torch import rand, randn_like, arange, linspace
 from ..diffusion import DM
 
 
@@ -52,7 +52,7 @@ class RectFlow(DM):
         conditions = tuple(c.unsqueeze(0) for c in conditions)
         tt = arange(0, self.num_steps, 1).reshape(-1, 1, 1) / self.num_steps  # add (batch, 1) to t
         dt = 1. / self.num_steps * self.matthew_factor
-        noiset = np.sqrt(dt) * randn_like(xt) * (self.noise_level * torch.linspace(1, 0, self.num_steps).reshape(-1, 1, 1))
+        noiset = (dt**0.5) * randn_like(xt) * (self.noise_level * linspace(1, 0, self.num_steps).reshape(-1, 1, 1))
 
         for T in range(t_start, self.num_steps):
             t = tt[T]

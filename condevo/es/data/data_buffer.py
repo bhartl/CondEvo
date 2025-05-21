@@ -28,6 +28,10 @@ class DataBuffer:
 
         self.info = {}
 
+    def __getitem__(self, key):
+        """ Access the buffer with a key. """
+        return self.buffer[key]
+
     def push(self, x: Tensor, fitness: Tensor, *conditions: Tensor):
         """
         Push new data into the buffer.
@@ -60,8 +64,7 @@ class DataBuffer:
         self.buffer["fitness"].extend([fi for fi in fitness.clone()])
 
         for i, condition in enumerate(conditions):
-            if i < len(self.buffer["conditions"]):
-                self.buffer["conditions"][i].extend([ci for ci in condition.clone()])
+            self.buffer["conditions"][i].extend([ci for ci in condition.clone()])
 
     def  pop(self, x: Tensor, fitness: Tensor, *conditions: Tensor) -> Union[tuple, None]:
         if not self.max_size:

@@ -53,8 +53,8 @@ class DataBuffer:
                 nan_indices = nan_indices | condition_nan
 
             # remove NaN values from x, fitness, and conditions
-            x = x[~nan_indices.view(-1)]
-            fitness = fitness[~nan_indices]
+            x = x[~nan_indices.sum(dim=1).bool()]
+            fitness = fitness[~nan_indices.sum(dim=1).bool()]
             conditions = [condition[~nan_indices] for condition in conditions]
 
         if self.max_size and (len(self.buffer["x"]) + len(x) > self.max_size):

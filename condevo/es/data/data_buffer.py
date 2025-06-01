@@ -43,7 +43,7 @@ class DataBuffer:
 
         if self.avoid_nans:
             # find indices in x and fitness that are not NaN
-            x_nans = x.isnan().any(dim=1)
+            x_nans = x.isnan().any(dim=1).view(-1,1)
             fitness_nans = fitness.isnan()
             condition_nans = [condition.isnan() for condition in conditions]
 
@@ -53,7 +53,7 @@ class DataBuffer:
                 nan_indices = nan_indices | condition_nan
 
             # remove NaN values from x, fitness, and conditions
-            x = x[~nan_indices]
+            x = x[~nan_indices.view(-1)]
             fitness = fitness[~nan_indices]
             conditions = [condition[~nan_indices] for condition in conditions]
 

@@ -51,6 +51,7 @@ class HADES:
                  eps: float = 1e-12,
                  buffer_size: Optional[Union[int, dict, DataBuffer]] = 4,
                  training_interval: int = 1,
+                 device: Optional[torch.device] = 'cpu'
                  ):
         """ Constructs a SHADES optimizer.
 
@@ -106,8 +107,10 @@ class HADES:
         :param to_numpy: bool, whether to return the solutions as numpy arrays
         :param buffer_size: int, size of the buffer to store the solutions, fitness and probabilities for training the diffusion model.
         :param training_interval: int, number of sampled generations between retraining the diffusion model.
+        :param device: torch.device, device to use for the diffusion model and the solutions.
         """
 
+        self.device = device
         self.num_params = num_params
         self.popsize = popsize
         self.weight_decay = weight_decay
@@ -470,7 +473,7 @@ class HADES:
             f_dataset = f_dataset[~infty]
             x_dataset = x_dataset[~infty]
 
-        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False)
+        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False, device=x_dataset.device)
         weights_dataset = weights_dataset.reshape(-1, 1)
         self.buffer.info['selection_probability'] = weights_dataset.clone().flatten()
 

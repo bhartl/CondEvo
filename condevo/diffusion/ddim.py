@@ -10,7 +10,7 @@ class DDIM(DM):
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
                  diff_range=None, lambda_range=0., predict_eps_t=False, param_mean=0.0, param_std=1.0,
                  alpha_schedule="linear", matthew_factor=0.8, sample_uniform=True, autoscaling=True,
-                 log_dir="", normalize_steps=False, diff_range_filter=True,
+                 log_dir="", normalize_steps=False, diff_range_filter=True, device='cpu'
                  ):
         """ Initialize the DDIM model
 
@@ -30,7 +30,7 @@ class DDIM(DM):
         # call the base class constructor, sets nn and num_steps attributes
         super(DDIM, self).__init__(nn=nn, num_steps=num_steps, diff_range=diff_range, lambda_range=lambda_range,
                                    param_mean=param_mean, param_std=param_std, sample_uniform=sample_uniform,
-                                   autoscaling=autoscaling, log_dir=log_dir, diff_range_filter=diff_range_filter)
+                                   autoscaling=autoscaling, log_dir=log_dir, diff_range_filter=diff_range_filter, device=device)
         self.skip_connection = skip_connection
         self.normalize_steps = normalize_steps
 
@@ -53,17 +53,17 @@ class DDIM(DM):
         self._alpha_schedule = value
 
         if value == "linear":
-            self.alpha = linspace(1 - 1 / self.num_steps, 1e-8, self.num_steps)
+            self.alpha = linspace(1 - 1 / self.num_steps, 1e-8, self.num_steps).to(self.device)
 
         elif value == "cosine":
             delta = 1e-3
             x = linspace(0, pi, self.num_steps)
-            self.alpha = (cos(x) * (1 - 2 * delta) + 1) / 2
+            self.alpha = ((cos(x) * (1 - 2 * delta) + 1) / 2).to(self.device)
 
         else:
             raise NotImplementedError(f"Alpha schedule `{value}` not implemented.")
 
-        a = cat([tensor([1]), self.alpha])
+        a = cat([tensor([1], device=self.device), self.alpha])
         self.sigma = (1 - a[:-1]) / (1 - a[1:]) * (1 - a[1:] / a[:-1])
         self.sigma = sqrt(self.sigma)
     
@@ -115,7 +115,7 @@ class DDIM(DM):
 
         xt = xt.unsqueeze(0)
         conditions = tuple(c.unsqueeze(0) for c in conditions)
-        one = ones(1, 1)
+        one = ones(1, 1, device=self.device)
 
         for T in range(t_start - 1, 0, -1):
             t = one * T / self.num_steps
@@ -133,7 +133,7 @@ class DDIM(DM):
         return xt.squeeze(0)
 
     def eval_val_pred(self, x, *conditions):
-        t = rand(x.shape[0]).reshape(-1, 1)
+        t = rand(x.shape[0], device=self.device).reshape(-1, 1)
         xt, eps = self.diffuse(x, t)
         eps_pred = self.forward(xt, t, *conditions)
         return eps, eps_pred        

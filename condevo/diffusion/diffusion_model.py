@@ -11,7 +11,7 @@ class DM(Module):
     """ Diffusion Model base-class for condevo package. """
 
     def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., param_mean=0.0, param_std=1.0,
-                 epsilon=1e-8, log_dir="", sample_uniform=True, autoscaling=True, diff_range_filter=True):
+                 epsilon=1e-8, log_dir="", sample_uniform=True, autoscaling=True, diff_range_filter=True, device=None):
         """ Initialize the Diffusion Model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model. Needs to have a `_build_model` method.
@@ -55,7 +55,9 @@ class DM(Module):
     def init_nn(self):
         """ Initialize the neural network model """
         if hasattr(self.nn, '_build_model'):
+            backup_device = self.device
             self.nn._build_model()
+            self.nn.to(backup_device)  # move model to the device
 
         else:
             raise NotImplementedError("Model does not have a `_build_model` method.")
@@ -101,14 +103,14 @@ class DM(Module):
         """ Draw random samples from the standard normal distribution with given shape. """
         if not self.sample_uniform:
             # draw random samples from the standard normal distribution
-            x_source = randn(num, *shape)
+            x_source = randn(num, *shape, device=self.device)
             if self.autoscaling:
                 # scale to the training data STD and mean
                 x_source = x_source * self.param_std + self.param_mean
 
         else:
             # draw random samples from a uniform distribution
-            x_source = rand(num, *shape)
+            x_source = rand(num, *shape, device=self.device)
             if self.autoscaling:
                 # scale to the training data STD and mean
                 x_source = (x_source - 0.5) * self.param_std * 3. + self.param_mean

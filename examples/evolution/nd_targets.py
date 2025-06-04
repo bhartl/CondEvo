@@ -514,10 +514,174 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
     plot_3d(x, f, targets=targets)
 
 
+def half_hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, tensorboard=False):
+    # define the fitness function
+    targets = [[0.1, 4.0, -3.0],
+               [-2., 0.5, -0.25],
+               [1.0, -1., 1.4],
+               ]
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    targets = torch.tensor(targets, device=device)
+
+    def init_diffuser():
+        # define the neural network
+        num_params = len(targets[0])
+        mlp = MLP(num_params=num_params, num_hidden=64, num_layers=3, activation='SiLU', batch_norm=False, )
+        mlp = mlp.to(device=device)
+
+        # define the diffusion model
+        diffuser = DDIM(nn=mlp,
+                        num_steps=1000,
+                        noise_level=0.1,
+                        autoscaling=autoscaling,
+                        sample_uniform=sample_uniform,
+                        alpha_schedule="cosine",
+                        matthew_factor=0.8,  # np.sqrt(0.5),
+                        diff_range=5.0,
+                        log_dir="data/logs/half_hades" * tensorboard,
+                        device=device,
+                        )
+
+        return diffuser
+
+
+    # evolutionary loop
+    x, f = [], []
+    samples = torch.randn(popsize, len(targets[0]), device=device) * 5.0  # initial random samples
+    from condevo.es.utils import roulette_wheel
+
+    for g in range(generations):
+        fx = foo(samples, targets)  # evaluate fitness
+        print(f"Generation {g} -> fitness: {fx.clone().detach().max()}, diversity: {diversity(torch.tensor(samples.clone().detach()))}")
+        x.append(samples.clone().detach().cpu())
+        f.append(fx.clone().detach().cpu())
+
+        fx = roulette_wheel(f=fx.view(-1,1), s=10, device=device) # higher S mean more gready selection
+
+        # # normalize the samples
+        # fx  = (fx - fx.min()) / (fx.max() - fx.min() + 1e-8)
+
+        diffuser = init_diffuser()
+        loss = diffuser.fit(samples, weights=fx.view(-1,1))  # train the diffuser on the sampled parameters and their fitness
+        print(f"Loss: {np.mean(loss):.4f}")
+
+        samples = diffuser.sample(num=popsize, shape=(len(targets[0],),),)
+
+    # plotting results
+    plot_3d(x, f, targets=targets.clone().detach().cpu())
+
+
+def almost_hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True, tensorboard=False):
+    # define the fitness function
+    targets = [[0.1, 4.0, -3.0],
+               [-2., 0.5, -0.25],
+               [1.0, -1., 1.4],
+               ]
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    targets = torch.tensor(targets, device=device)
+
+    def init_diffuser():
+        from condevo.es.data import DataBuffer
+
+        # data buffer, potentially synchronized across multiple processes
+        data_buffer = DataBuffer(max_size=0)
+
+        # define the neural network
+        num_params = len(targets[0])
+        mlp = MLP(num_params=num_params, num_hidden=64, num_layers=3, activation='SiLU', batch_norm=False, )
+        mlp = mlp.to(device=device)
+
+        # define the diffusion model
+        diffuser = DDIM(nn=mlp,
+                        num_steps=1000,
+                        noise_level=0.1,
+                        autoscaling=autoscaling,
+                        sample_uniform=sample_uniform,
+                        alpha_schedule="cosine",
+                        matthew_factor=0.8,  # np.sqrt(0.5),
+                        diff_range=5.0,
+                        log_dir="data/logs/half_hades" * tensorboard,
+                        device=device,
+                        )
+
+        solver = HADES(num_params=num_params,
+                       model=diffuser,
+                       popsize=popsize,
+                       sigma_init=2.0,
+                       is_genetic_algorithm=False,
+                       selection_pressure=10,
+                       elite_ratio=0.1,
+                       mutation_rate=0.05,
+                       unbiased_mutation_ratio=0.1,
+                       crossover_ratio=0.0,
+                       readaptation=True,
+                       forget_best=True,
+                       diff_lr=0.001,
+                       diff_optim="Adam",
+                       diff_max_epoch=100,
+                       diff_batch_size=256,
+                       diff_weight_decay=1e-6,
+                       buffer_size=data_buffer,
+                       device=device,
+                       )
+
+        return solver, data_buffer
+
+
+    # evolutionary loop
+    x, f = [], []
+    samples = torch.randn(popsize, len(targets[0]), device=device) * 5.0  # initial random samples
+    from condevo.es.utils import roulette_wheel
+
+    for g in range(generations):
+        fx = foo(samples, targets)  # evaluate fitness
+        print(f"Generation {g} -> fitness: {fx.clone().detach().max()}, diversity: {diversity(torch.tensor(samples.clone().detach()))}")
+        x.append(samples.clone().detach().cpu())
+        f.append(fx.clone().detach().cpu())
+
+        # fx = roulette_wheel(f=fx.view(-1,1), s=10, device=device) # higher S mean more gready selection
+
+        # # normalize the samples
+        # fx  = (fx - fx.min()) / (fx.max() - fx.min() + 1e-8)
+
+        solver, data_buffer = init_diffuser()
+        data_buffer.push(x=samples, fitness=fx)
+        parent_dataset, survival_weights = solver.selection()
+        loss = solver.train_model(dataset=parent_dataset, weights=survival_weights)
+
+        print(f"Loss: {np.mean(loss):.4f}")
+
+        # if np.random.rand(1) < solver.elite_ratio:
+        # draw high-quality from data buffer
+        parent_dataset, fitness_probability = solver.selection()
+        # could also directly access `data_buffer.x` and `data_buffer.fitness` for high quality/diversity sample
+
+        # pick from parent_dataset with probability weights
+        selected_genotypes = torch.multinomial(fitness_probability.flatten() / fitness_probability.sum(), samples.shape[0], replacement=True)
+        x_g = parent_dataset[selected_genotypes]
+
+        # refine the sample by denoising with retrained DM
+        x_g = solver.model.sample(x_source=x_g, shape=(samples.shape[1],),)# t_start=50) # t_start = criticality mutation, how much we should refind on the criticality
+        # else:
+        # # sample from diffusion model
+        # x_g = solver.model.sample(num=popsize, shape=(samples.shape[1],))  # t_start = criticality mutation, how much we should refind on the criticality
+
+        samples = x_g
+
+
+    # plotting results
+    plot_3d(x, f, targets=targets.clone().detach().cpu())
+
+
+
 if __name__ == "__main__":
     import argh
     argh.dispatch_commands([hades,
                             charles,
                             hades_GA_refined,
                             hades_score_refined,
+                            half_hades,
+                            almost_hades,
                             ])

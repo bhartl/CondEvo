@@ -10,8 +10,8 @@ class DDIM(DM):
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
                  diff_range=None, lambda_range=0., predict_eps_t=False, param_mean=0.0, param_std=1.0,
                  alpha_schedule="linear", matthew_factor=0.8, sample_uniform=True, autoscaling=True,
-                 log_dir="", normalize_steps=False, diff_range_filter=True, device='cpu'
-                 ):
+                 log_dir="", normalize_steps=False, diff_range_filter=True,
+                 clip_gradients=None):
         """ Initialize the DDIM model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
@@ -30,7 +30,8 @@ class DDIM(DM):
         # call the base class constructor, sets nn and num_steps attributes
         super(DDIM, self).__init__(nn=nn, num_steps=num_steps, diff_range=diff_range, lambda_range=lambda_range,
                                    param_mean=param_mean, param_std=param_std, sample_uniform=sample_uniform,
-                                   autoscaling=autoscaling, log_dir=log_dir, diff_range_filter=diff_range_filter, device=device)
+                                   autoscaling=autoscaling, log_dir=log_dir, diff_range_filter=diff_range_filter,
+                                   clip_gradients=clip_gradients)
         self.skip_connection = skip_connection
         self.normalize_steps = normalize_steps
 

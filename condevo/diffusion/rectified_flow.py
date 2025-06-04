@@ -7,7 +7,7 @@ class RectFlow(DM):
 
     def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., matthew_factor=0.8,
                  param_mean=0.0, param_std=1.0, autoscaling=True, sample_uniform=True, log_dir="", noise_level=0.0,
-                 diff_range_filter=True, ):
+                 diff_range_filter=True, clip_gradients=False):
         """ Initialize the RectFlow model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
@@ -28,7 +28,9 @@ class RectFlow(DM):
                                        diff_range=diff_range, lambda_range=lambda_range,
                                        param_mean=param_mean, param_std=param_std, autoscaling=autoscaling,
                                        sample_uniform=sample_uniform, log_dir=log_dir,
-                                       diff_range_filter=diff_range_filter)
+                                       diff_range_filter=diff_range_filter,
+                                       clip_gradients=clip_gradients)
+
         self.matthew_factor = matthew_factor
         self.noise_level = noise_level
 

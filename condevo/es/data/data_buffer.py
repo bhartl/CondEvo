@@ -53,9 +53,9 @@ class DataBuffer:
                 nan_indices = nan_indices | condition_nan
 
             # remove NaN values from x, fitness, and conditions
-            x = x[~nan_indices.sum(dim=1).bool()]
+            x = x[~nan_indices.sum(dim=1).bool()]  # TODO: check if this works with 1D tensors
             fitness = fitness[~nan_indices.sum(dim=1).bool()]
-            conditions = [condition[~nan_indices] for condition in conditions]
+            conditions = [condition[~nan_indices.sum(dim=1).bool()] for condition in conditions]
 
         if self.max_size and (len(self.buffer["x"]) + len(x) > self.max_size):
             _, (x, fitness, *conditions) = self.pop(x, fitness, *conditions)

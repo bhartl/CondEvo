@@ -138,7 +138,9 @@ class HADES:
 
         if model is None or isinstance(model, str):
             model = get_default_model(dm_cls=model, num_params=num_params)
-        self.model = model
+            # TODO: device
+
+        self.model = model.to(device)
         self.diff_optim = diff_optim
         self.diff_lr = diff_lr
         self.diff_weight_decay = diff_weight_decay
@@ -419,9 +421,8 @@ class HADES:
                 random_noise = (rand(self.num_params) - 0.5) * std * 3.
                 samples[i, :] += random_noise
 
-            if self.model.diff_range is not None:
-                # clip the samples to the parameter range
-                samples[:] = samples.clamp(-self.model.diff_range, self.model.diff_range)
+            # clip the samples to the parameter range according to the diff_range policy of the DM
+            samples[:] = self.model.diff_clamp(samples)
 
         return samples
 
@@ -473,7 +474,7 @@ class HADES:
             f_dataset = f_dataset[~infty]
             x_dataset = x_dataset[~infty]
 
-        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False, device=x_dataset.device)
+        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False)
         weights_dataset = weights_dataset.reshape(-1, 1)
         self.buffer.info['selection_probability'] = weights_dataset.clone().flatten()
 
@@ -496,6 +497,7 @@ class HADES:
         if not self.diff_continuous_training:
             # reinitialize the diffusion model
             self.model.init_nn()
+            self.model = self.model.to(self.device)
 
         loss = self.model.fit(dataset, weights=weights, **self.diff_kwargs)
         self.log()

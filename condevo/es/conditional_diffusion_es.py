@@ -39,6 +39,7 @@ class CHARLES(HADES):
                  to_numpy: bool = False,
                  buffer_size: int = 4,
                  training_interval: int = 1,
+                 device="cpu"
                  ):
         """ Constructs a CHARLES-Diffusion optimizer.
 
@@ -125,6 +126,7 @@ class CHARLES(HADES):
                          to_numpy=to_numpy,
                          buffer_size=buffer_size,
                          training_interval=training_interval,
+                         device=device,
                          )
 
     def ask(self):
@@ -238,6 +240,7 @@ class CHARLES(HADES):
 
         if not self.diff_continuous_training:
             self.model.init_nn()
+            self.model = self.model.to(self.device)
 
         x, conditions = dataset
         training_conditions = self.transform_conditions(conditions)

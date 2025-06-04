@@ -141,7 +141,8 @@ class ScheduledSelectionPressure:
         return self.get_value() * other
 
 
-def roulette_wheel(f, s=3., eps=1e-12, assume_sorted=False, normalize=False, consider_nans=False, device='cpu'):
+@torch.no_grad()
+def roulette_wheel(f, s=3., eps=1e-12, assume_sorted=False, normalize=False, consider_nans=False, threshold=0):
     """ Roulette wheel fitness transformation.
 
     We transform the fitness values f to probabilities p by applying the roulette wheel fitness transformation.
@@ -169,7 +170,12 @@ def roulette_wheel(f, s=3., eps=1e-12, assume_sorted=False, normalize=False, con
     if not consider_nans:
         f = f[f_valid]
 
+    if threshold > 0:
+        f_threshold = f.min() + (f.max() - f.min()) * threshold
+        f[f < f_threshold] = f_threshold  # apply threshold to fitness values
+
     exp = torch.exp if isinstance(f, torch.Tensor) else np.exp
+    device = f.device if isinstance(f, torch.Tensor) else 'cpu'
     indices = torch.arange(len(f), device=device) if isinstance(f, torch.Tensor) else torch.arange(len(f),device=device)
 
     if not assume_sorted:

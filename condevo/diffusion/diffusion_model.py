@@ -11,7 +11,8 @@ class DM(Module):
     """ Diffusion Model base-class for condevo package. """
 
     def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., param_mean=0.0, param_std=1.0,
-                 epsilon=1e-8, log_dir="", sample_uniform=True, autoscaling=True, diff_range_filter=True, device=None):
+                 epsilon=1e-8, log_dir="", sample_uniform=True, autoscaling=True, diff_range_filter=True,
+                 clip_gradients=None):
         """ Initialize the Diffusion Model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model. Needs to have a `_build_model` method.
@@ -48,6 +49,8 @@ class DM(Module):
         self.sample_uniform = sample_uniform
         self.autoscaling = autoscaling
         self.epsilon = epsilon
+
+        self.clip_gradients = clip_gradients
 
         self._logger = None
         self._log_dir = log_dir
@@ -152,13 +155,13 @@ class DM(Module):
         # check for valid parameter range
         exceeding_x = self.exceeds_diff_range(x_sampled) > 0
         exceeding_count = 0
-        while exceeding_x.any():
+        while self.diff_range not in [None, 0, 0.0] and exceeding_x.any():
             # new sample points
             exceeding_x_source = self.draw_random(int(sum(exceeding_x)), *shape)
 
             if exceeding_count > 2:  # try 10 times to sample valid points
                 # clamp to diff_range if too many iterations
-                exceeding_x_source = exceeding_x_source.clamp(-self.diff_range, self.diff_range)
+                exceeding_x_source = self.diff_clamp(exceeding_x_source)
                 x_sampled[exceeding_x] = exceeding_x_source
                 break
 
@@ -199,11 +202,19 @@ class DM(Module):
     def exceeds_diff_range(self, x):
         """ If the parameter range is specified, evaluate the exceed of the parameter range (via ReLU),
             otherwise return zeros tensor. """
-        if self.diff_range in [None, 0]:
-            return zeros_like(x[:, 0])
+        if self.diff_range in [None, 0, 0.0]:
+            return zeros_like(x[:, 0], device=self.device)
 
         # evaluate the exceed of the parameter range (via ReLU)
         return ReLU()((x ** 2 - self.diff_range ** 2).reshape(x.shape[0], -1)).mean(dim=-1).sqrt()
+
+    def diff_clamp(self, x):
+        """ Clamp the input tensor `x` to the diffusion range if specified. """
+        if self.diff_range in [None, 0, 0.0]:
+            return x
+
+        # clamp the input tensor to the diffusion range
+        return x.clamp(-self.diff_range, self.diff_range)
 
     @no_grad()
     def get_standard_scaler(self, x, weights=None, conditions=()):
@@ -222,7 +233,7 @@ class DM(Module):
                 weights = weights[~nan_weights]
 
         # check for exceeding parameter range
-        if self.diff_range_filter and self.diff_range not in [None, 0]:
+        if self.diff_range_filter and self.diff_range not in [None, 0, 0.0]:
             exceeding_x = self.exceeds_diff_range(x) > 0
             if exceeding_x.any():
                 x = x[~exceeding_x]
@@ -281,6 +292,7 @@ class DM(Module):
         best_loss = torch.inf
         for epoch in tqdm(range(int(max_epoch))):
             epoch_loss = 0
+            num_updates = 0
             for x_batch, *c_batch, w_batch in training_dataloader:
                 optimizer.zero_grad()
                 v, v_pred = self.eval_val_pred(x_batch, *c_batch)
@@ -288,11 +300,23 @@ class DM(Module):
                 reg_loss = self.regularize(x_batch, w_batch, *c_batch)
                 loss = (loss + reg_loss).mean()
                 loss.backward()
+
+                if self.clip_gradients:
+                    clip_value = self.clip_gradients if not isinstance(self.clip_gradients, bool) else 1.
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), clip_value)
+
+                # check for NaN values in gradients
+                # for param in self.parameters():
+                #     if param.grad is not None and torch.isnan(param.grad).any():
+                #         print(f"NaN gradients detected in parameter {param}. Skipping update.")
+                #         continue
+
                 epoch_loss = epoch_loss + loss.item()
                 optimizer.step()
+                num_updates += 1
 
             self.logger.log_scalar(f"Loss/Train", epoch_loss, epoch)
-            epoch_loss = epoch_loss/batch_size
+            epoch_loss = epoch_loss/(num_updates or 1)  # avoid division by zero
             loss_history.append(epoch_loss)
             if scheduler is not None:
                 scheduler.step()

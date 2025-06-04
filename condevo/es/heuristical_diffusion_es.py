@@ -138,7 +138,7 @@ class HADES:
 
         if model is None or isinstance(model, str):
             model = get_default_model(dm_cls=model, num_params=num_params)
-            # TODO: device
+            model = model.to(device)
 
         self.model = model.to(device)
         self.diff_optim = diff_optim

@@ -176,7 +176,7 @@ def roulette_wheel(f, s=3., eps=1e-12, assume_sorted=False, normalize=False, con
 
     exp = torch.exp if isinstance(f, torch.Tensor) else np.exp
     device = f.device if isinstance(f, torch.Tensor) else 'cpu'
-    indices = torch.arange(len(f), device=device) if isinstance(f, torch.Tensor) else torch.arange(len(f),device=device)
+    indices = torch.arange(len(f), device=device) if isinstance(f, torch.Tensor) else np.arange(len(f))
 
     if not assume_sorted:
         # sort fitness in ascending order
@@ -221,6 +221,55 @@ def roulette_wheel(f, s=3., eps=1e-12, assume_sorted=False, normalize=False, con
         f_finite = fs
     else:
         f_finite[f_valid] = fs
+    return f_finite
+
+
+@torch.no_grad()
+def boltzmann_selection(f, s=3., normalize=False, consider_nans=False, threshold=0):
+    """ Roulette wheel fitness transformation.
+
+    We transform the fitness values f to probabilities p by applying the roulette wheel fitness transformation.
+    The roulette wheel fitness transformation is a monotonic transformation that maps the fitness values to
+    probabilities. The selection pressure s controls the degree of selection. The higher the selection pressure,
+    the more the probabilities are concentrated on the best solutions (s can be positive or negative).
+
+    :param f: torch.Tensor of shape (popsize,), fitness values of the sampled solutions
+    :param s: float, selection pressure
+    :param eps: float, epsilon to avoid division by zero
+    :param assume_sorted: bool, whether to disable sorting of the fitness values and assume that they are already sorted
+    :param normalize: bool, whether to normalize the probabilities to sum to 1 (default False, i.e., the sum over
+                      the returned scaled probabilities is equal to the sum over the fitness absolute values)
+    :param consider_nans: bool, whether to consider NaN fitness values in the selection process
+    :return: torch.Tensor of shape (popsize,), indices of the selected solutions
+    """
+    if not isinstance(f, (torch.Tensor, np.ndarray)):
+        f = torch.tensor(f)
+
+    f_nan = torch.isnan(f) if isinstance(f, torch.Tensor) else np.isnan(f)
+    f_inf = torch.isinf(f) if isinstance(f, torch.Tensor) else np.isinf(f)
+    f_valid = ~(f_nan | f_inf)
+
+    f_finite = torch.zeros_like(f) if isinstance(f, torch.Tensor) else np.zeros_like(f)
+    if not consider_nans:
+        f = f[f_valid]
+
+    exp = torch.exp if isinstance(f, torch.Tensor) else np.exp
+    abs = torch.abs if isinstance(f, torch.Tensor) else np.abs
+    f_max = f.max() if isinstance(f, torch.Tensor) else np.max(f)
+    fs = exp(-s * abs(f - f_max))  # apply Boltzmann selection pressure, s can be positive or negative
+
+    if threshold > 0:
+        f_threshold = f.min() + (f.max() - f.min()) * threshold
+        fs[f < f_threshold] = 0.  # apply threshold to fitness values
+
+    if normalize:
+        fs /= fs.sum()
+
+    if consider_nans:
+        f_finite = fs
+    else:
+        f_finite[f_valid] = fs
+
     return f_finite
 
 

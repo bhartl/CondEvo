@@ -11,7 +11,7 @@ class DM(Module):
     """ Diffusion Model base-class for condevo package. """
 
     def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., param_mean=0.0, param_std=1.0,
-                 epsilon=1e-8, log_dir="", sample_uniform=True, autoscaling=True, diff_range_filter=True,
+                 epsilon=1e-8, log_dir="", sample_uniform=False, autoscaling=False, diff_range_filter=True,
                  clip_gradients=None):
         """ Initialize the Diffusion Model
 

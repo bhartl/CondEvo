@@ -9,7 +9,7 @@ class DDIM(DM):
 
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
                  diff_range=None, lambda_range=0., predict_eps_t=False, param_mean=0.0, param_std=1.0,
-                 alpha_schedule="linear", matthew_factor=0.8, sample_uniform=True, autoscaling=True,
+                 alpha_schedule="linear", matthew_factor=0.8, sample_uniform=False, autoscaling=False,
                  log_dir="", normalize_steps=False, diff_range_filter=True,
                  clip_gradients=None):
         """ Initialize the DDIM model

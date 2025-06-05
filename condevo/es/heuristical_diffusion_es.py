@@ -29,7 +29,9 @@ class HADES:
                  sigma_init=1.0,
                  x0=None,
                  is_genetic_algorithm=False,
+                 selection_method="roulette_wheel",
                  selection_pressure=3.,
+                 selection_threshold=0.0,
                  adaptive_selection_pressure=False,
                  elite_ratio=0.1,
                  forget_best=True,
@@ -69,7 +71,9 @@ class HADES:
                                      for training the DM via roulette wheel selection of the solution's fitness.
                                      In the case of the algorithm being used as evolutionary, the solution are weighted by
                                      their fitness when training the diffusion model.
-        :param selection_pressure: float, selection pressure for the `roulette_wheel` fitness transformation
+        :param selection_method: str, selection method to use for the selection of the solutions, defaults to `utils.roulette_wheel`.
+                                 Needs to take arguments `f` (fitness values), `s` (selection pressure), `normalize` (bool), `threshold` (float [0, 1]).
+        :param selection_pressure: float, selection pressure for the selected fitness transformation (defaults to `utils.roulette_wheel`)
         :param adaptive_selection_pressure: bool, whether to adapt the selection pressure, so the elite solutions
                                             have a probability of (1-elite_ratio) to be selected. If False, the
                                             selection pressure is fixed, otherwise the selection pressure is the
@@ -121,7 +125,10 @@ class HADES:
             x0 = zeros(self.num_params)
         assert x0.shape == (self.num_params,), x0.shape
         self.x0 = x0
+
+        self.selection_method = getattr(utils, selection_method) if isinstance(selection_method, str) else selection_method
         self.selection_pressure = selection_pressure  # selection_pressure initial value
+        self.selection_threshold = selection_threshold
         self.adaptive_selection_pressure = adaptive_selection_pressure
         self.is_genetic_algorithm = is_genetic_algorithm
 
@@ -342,13 +349,13 @@ class HADES:
         return samples
 
     def get_crossover(self, num_crossover, *conditions):
-        # roulette_wheel probability for selection
-        p = utils.roulette_wheel(utils.tensor_to_numpy(self.elite_fitness), s=self.selection_pressure, normalize=True)
+        # get probability for selection
+        p = self.selection_method(self.elite_fitness, normalize=True, **self.selection_kwargs)
 
         # sample crossover solutions
         xt_crossover = []
         for i in range(num_crossover):
-            # select two parents via roulette wheel selection, either from elites or from all if elite_ratio = 0
+            # select two parents either from elites or from all if elite_ratio = 0
             j, k = np.random.choice(np.arange(0, self.num_elite or self.popsize), size=2, p=p, replace=False)
             p1 = self.elites[j]
 
@@ -439,7 +446,7 @@ class HADES:
         return reward_table[argsort_reward], argsort_reward
 
     def get_selection_pressure(self, fitness):
-        """ Return the selection pressure for the roulette wheel selection, so the current populations
+        """ Return the selection pressure for the chosen selection method, so the current populations
             elites make up (1-elite_ratio) . """
 
         if not self.adaptive_selection_pressure or not self.elite_ratio:
@@ -447,16 +454,16 @@ class HADES:
 
         num_elites = int(self.popsize * self.elite_ratio)
         def foo(s):
-            p = utils.roulette_wheel(f=utils.tensor_to_numpy(fitness), s=s, normalize=True)
+            p = self.selection_method(f=utils.tensor_to_numpy(fitness), s=s, normalize=True, threshold=self.selection_threshold)
             elite_weight = (1 - self.elite_ratio)
             return np.abs(np.cumsum(sorted(p, reverse=True))[num_elites-1] - elite_weight)
 
-        result = minimize(foo, x0=self.selection_pressure, bounds=[(0.1, 30.)], tol=1e-3)
+        result = minimize(foo, x0=self.selection_pressure, bounds=[(0.01, 30.)], tol=1e-3)
         selection_pressure = result.x.item()
         return selection_pressure
 
     def selection(self):
-        """ Perform roulette_wheel selection step of current population data. """
+        """ Perform selection step of current population data. """
         x = self.solutions
         fitness = self.fitness
         if x is not None:
@@ -465,7 +472,7 @@ class HADES:
         # get buffer dataset
         x_dataset = self.buffer.x.clone()
 
-        # evaluate roulette wheel selection for buffer samples
+        # evaluate selection criteria for buffer samples
         f_dataset = self.buffer.fitness.flatten()
 
         # check for nans (e.g. runaway parameters)
@@ -474,12 +481,12 @@ class HADES:
             f_dataset = f_dataset[~infty]
             x_dataset = x_dataset[~infty]
 
-        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False)
+        weights_dataset = self.selection_method(f=f_dataset, normalize=False, **self.selection_kwargs)
         weights_dataset = weights_dataset.reshape(-1, 1)
         self.buffer.info['selection_probability'] = weights_dataset.clone().flatten()
 
         if self.is_genetic_algorithm:
-            # select samples from buffer based on roulette wheel selection
+            # select samples from buffer based on selection criteria
             selected_genotypes = torch.multinomial(weights_dataset.flatten() / weights_dataset.sum(), len(x_dataset), replacement=True)
             x_dataset = x_dataset[selected_genotypes]
             weights_dataset = None  # disable weights for DM training
@@ -543,6 +550,11 @@ class HADES:
                     lr=self.diff_lr,
                     weight_decay=self.diff_weight_decay,
                     batch_size=self.diff_batch_size)
+
+    @property
+    def selection_kwargs(self):
+        return dict(s=self.selection_pressure,
+                    threshold=self.selection_threshold)
 
     def result(self):
         """ return best params so far, along with historically best reward, curr reward, curr reward STD. """

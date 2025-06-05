@@ -553,7 +553,10 @@ class RouletteFitnessCondition(FitnessCondition):
 
     def sample(self, charles_instance, num_samples: int):
         # choice of self.f with probability self.prob
-        selected_fitness = torch.multinomial(self.prob.flatten() / self.prob.sum(), len(self.f), replacement=True)
+        p = torch.sort(self.prob.flatten(), descending=False).values
+        p = p / p.sum()  # normalize probabilities
+
+        selected_fitness = torch.multinomial(p, len(self.f), replacement=True)
         selected_fitness = selected_fitness.to(self.f.device)
 
         min_f, max_f = self.f.min(), self.f.max()
@@ -564,7 +567,11 @@ class RouletteFitnessCondition(FitnessCondition):
         return f_sample / self.scale
 
 
-def half_hades(generations=20, popsize=512, autoscaling=False, sample_uniform=False, tensorboard=False):
+def half_hades(generations=20, popsize=512, autoscaling=False, sample_uniform=False, tensorboard=False,
+               use_fitness_condition=False, selection="roulette_wheel"):
+
+    assert selection in ["roulette_wheel", "boltzmann_selection"]
+
     # define the fitness function
     targets = [[0.1, 4.0, -3.0],
                [-2., 0.5, -0.25],
@@ -577,7 +584,8 @@ def half_hades(generations=20, popsize=512, autoscaling=False, sample_uniform=Fa
     def init_diffuser():
         # define the neural network
         num_params = len(targets[0])
-        mlp = MLP(num_params=num_params, num_hidden=64, num_layers=6, activation='SiLU', batch_norm=True, num_conditions=1)
+        mlp = MLP(num_params=num_params, num_hidden=64, num_layers=6, activation='SiLU', batch_norm=True,
+                  num_conditions=int(use_fitness_condition))
         mlp = mlp.to(device=device)
 
         # define the diffusion model
@@ -600,7 +608,7 @@ def half_hades(generations=20, popsize=512, autoscaling=False, sample_uniform=Fa
     # evolutionary loop
     x, f = [], []
     samples = torch.randn(popsize, len(targets[0]), device=device) * 5.0  # initial random samples
-    from condevo.es.utils import roulette_wheel
+    from condevo.es.utils import roulette_wheel, boltzmann_selection
 
     # fitness_condition = UniformFitnessCondition(scale=1.0, greedy=False)
     fitness_condition = RouletteFitnessCondition()
@@ -609,40 +617,54 @@ def half_hades(generations=20, popsize=512, autoscaling=False, sample_uniform=Fa
         fx = foo(samples.clone(), targets)  # evaluate fitness
         print(f"Generation {g} -> fitness: {fx.clone().detach().max()}, diversity: {diversity(torch.tensor(samples.clone().detach()))}")
 
-        argsort_f = fx.clone().detach().argsort()
-        samples = samples[argsort_f]  # sort samples by fitness
-        fx = fx[argsort_f]  # sort fitness by fitness
+        #argsort_f = fx.clone().detach().argsort()
+        #samples = samples[argsort_f]  # sort samples by fitness
+        #fx = fx[argsort_f]  # sort fitness by fitness
 
         x.append(samples.clone().detach().cpu())
         f.append(fx.clone().detach().cpu())
 
         fx_plain = fx.cpu().clone().detach()
-        fx = roulette_wheel(f=fx.view(-1,1), s=10, assume_sorted=True, threshold=0.5) # higher S mean more greedy selection
-
-        fitness_condition_evaluation = fitness_condition.evaluate(None, samples, fx_plain)
-        fitness_condition_evaluation = fitness_condition_evaluation.view(-1, 1).to(device)
-        fitness_condition.prob = fx.clone()
-
-        fitness_samples = fitness_condition.sample(None, num_samples=popsize)
-        fitness_samples = fitness_samples.to(device).view(-1, 1)  # sample fitness values for the diffuser
+        if selection == "roulette_wheel":
+            fx = roulette_wheel(f=fx.view(-1,1), s=10, assume_sorted=False, threshold=0.5) # higher S mean more greedy selection
+        else:
+            fx = boltzmann_selection(f=fx.view(-1,1),
+                                     s=0.8 * (1 + g/generations),
+                                     threshold=0.6) # higher S mean more greedy selection
 
         import matplotlib.pyplot as plt
         plt.plot(fx_plain.numpy(), fx.cpu().numpy(), label=f"Generation {g}", marker=".", linewidth=0)
 
         # histogram of fitness
+        plt.twinx(plt.gca())
         plt.hist(fx_plain.cpu().numpy(), bins=50, alpha=0.5, label=f"Generation {g} histogram")
-        plt.hist(fitness_samples.cpu().numpy(), bins=50, alpha=0.5, label=f"Sampling {g} histogram")
+
+        # optional fitness condition
+        conditions_train = []
+        conditions_sample = []
+        if use_fitness_condition:
+            fitness_condition_evaluation = fitness_condition.evaluate(None, samples, fx_plain)
+            fitness_condition_evaluation = fitness_condition_evaluation.view(-1, 1).to(device)
+            fitness_condition.prob = fx.clone()
+            conditions_train = [fitness_condition_evaluation,]
+
+            fitness_samples = fitness_condition.sample(None, num_samples=popsize)
+            fitness_samples = fitness_samples.to(device).view(-1, 1)  # sample fitness values for the diffuser
+            conditions_sample = [fitness_samples,]
+
+            plt.hist(fitness_samples.cpu().numpy(), bins=50, alpha=0.5, label=f"Sampling {g} histogram")
+
         plt.legend()
         plt.show()
 
-
         diffuser = init_diffuser()
-        loss = diffuser.fit(samples, fitness_condition_evaluation, weights=fx.view(-1,1),
+
+        loss = diffuser.fit(samples, *conditions_train, weights=fx.view(-1,1),
                             max_epoch=500, batch_size=256, weight_decay=1e-5,
                             )  # train the diffuser on the sampled parameters and their fitness
         print(f"Loss: {np.mean(loss):.4f}")
 
-        samples = diffuser.sample(num=popsize, shape=(len(targets[0],),), conditions=[fitness_samples,])  # sample from the diffuser
+        samples = diffuser.sample(num=popsize, shape=(len(targets[0],),), conditions=conditions_sample)  # sample from the diffuser
 
     # plotting results
     plot_3d(x, f, targets=targets.clone().detach().cpu())

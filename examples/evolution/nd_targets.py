@@ -567,8 +567,16 @@ class RouletteFitnessCondition(FitnessCondition):
         return f_sample / self.scale
 
 
-def half_hades(generations=20, popsize=512, autoscaling=False, sample_uniform=False, tensorboard=False,
-               use_fitness_condition=False, selection="roulette_wheel"):
+def half_hades(generations=20,
+               popsize=512,
+               autoscaling=False,
+               sample_uniform=False,
+               tensorboard=False,
+               use_fitness_condition=False,
+               selection="roulette_wheel",
+               make_genetic=False,
+               matthew_factor=1.,  # 1 for "sharp" sampling, 0.8 for "exploration"
+               use_rect_flow=False):
 
     assert selection in ["roulette_wheel", "boltzmann_selection"]
 
@@ -584,22 +592,36 @@ def half_hades(generations=20, popsize=512, autoscaling=False, sample_uniform=Fa
     def init_diffuser():
         # define the neural network
         num_params = len(targets[0])
-        mlp = MLP(num_params=num_params, num_hidden=64, num_layers=6, activation='SiLU', batch_norm=True,
+        mlp = MLP(num_params=num_params, num_hidden=36, num_layers=3, activation='ReLU', batch_norm=False,
                   num_conditions=int(use_fitness_condition))
         mlp = mlp.to(device=device)
 
-        # define the diffusion model
-        diffuser = DDIM(nn=mlp,
-                        num_steps=1000,
-                        noise_level=0.1,
-                        autoscaling=autoscaling,
-                        sample_uniform=sample_uniform,
-                        alpha_schedule="cosine",
-                        matthew_factor=0.8,  # np.sqrt(0.5),
-                        diff_range=5.0,
-                        log_dir="data/logs/half_hades" * tensorboard,
-                        clip_gradients=1.
-                        )
+        if not use_rect_flow:
+            # define the diffusion model
+            diffuser = DDIM(nn=mlp,
+                            num_steps=100,
+                            noise_level=0.0,
+                            autoscaling=autoscaling,
+                            sample_uniform=sample_uniform,
+                            alpha_schedule="cosine",
+                            matthew_factor=matthew_factor,  # 1 for "sharp" sampling, 0.8 for "exploration"
+                            diff_range=5.0,
+                            log_dir="data/logs/half_hades" * tensorboard,
+                            clip_gradients=1.
+                            )
+
+        else:
+            diffuser = RectFlow(
+                nn=mlp,
+                num_steps=100,
+                noise_level=0.0,
+                autoscaling=autoscaling,
+                sample_uniform=sample_uniform,
+                matthew_factor=matthew_factor,  # 1 for "sharp" sampling, 0.8 for "exploration"
+                diff_range=5.0,
+                log_dir="data/logs/half_hades" * tensorboard,
+                # clip_gradients=1.
+            )
 
         diffuser = diffuser.to(device=device)
         return diffuser
@@ -659,8 +681,17 @@ def half_hades(generations=20, popsize=512, autoscaling=False, sample_uniform=Fa
 
         diffuser = init_diffuser()
 
-        loss = diffuser.fit(samples, *conditions_train, weights=fx.view(-1,1),
-                            max_epoch=500, batch_size=256, weight_decay=1e-5,
+        if make_genetic:
+            # preselect from samples according to fx, good samples will be overrepresented, the DM learns to sample them more often
+            # see also quality-diversity measure here: https://github.com/Zhangyanbo/diffusion-evolution/blob/main/experiments/benchmarks/methods/map_elite.py
+            p = fx / fx.sum()  # normalize probabilities
+            selected_samples = torch.multinomial(p.flatten(), 1000, replacement=True)
+            samples = samples[selected_samples]  # sample from the population according to fitness
+            conditions_train = [c[selected_samples] for c in conditions_train] if conditions_train else []
+            fx = None
+
+        loss = diffuser.fit(samples, *conditions_train, weights=fx,
+                            max_epoch=500, batch_size=256, weight_decay=0.0, # 1e-5,
                             )  # train the diffuser on the sampled parameters and their fitness
         print(f"Loss: {np.mean(loss):.4f}")
 

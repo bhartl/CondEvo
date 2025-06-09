@@ -5,7 +5,7 @@ from ..diffusion import DM
 class RectFlow(DM):
     """ Rectified Flow model for `condevo` package. """
 
-    def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., matthew_factor=0.8,
+    def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., matthew_factor=1.0,
                  param_mean=0.0, param_std=1.0, autoscaling=False, sample_uniform=False, log_dir="", noise_level=0.0,
                  diff_range_filter=True, clip_gradients=False):
         """ Initialize the RectFlow model
@@ -16,7 +16,8 @@ class RectFlow(DM):
         :param diff_range_filter: bool, Whether to filter the training data for exceeding the parameter range
                                   (any dimension larger than diff_range). Defaults to True.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
-        :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.8.
+        :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling.
+                               Defaults to 1.0, set to 0.8 for exploration.
         :param param_mean: float, Initial mean of the parameters. Defaults to 0.0.
         :param param_std: float, Initial standard deviation of the parameters. Defaults to 1.0.
         :param autoscaling: bool, Whether to use autoscaling for the sampled parameters before denoising. Defaults to True.
@@ -51,10 +52,11 @@ class RectFlow(DM):
             t_start = 0
 
         xt = xt.unsqueeze(0)
+        rx = randn_like(xt, device=self.device) * linspace(1, 0, self.num_steps, device=self.device).reshape(-1, 1, 1)
         conditions = tuple(c.unsqueeze(0) for c in conditions)
-        tt = arange(0, self.num_steps, 1).reshape(-1, 1, 1) / self.num_steps  # add (batch, 1) to t
+        tt = arange(0, self.num_steps, 1, device=self.device).reshape(-1, 1, 1) / self.num_steps  # add (batch, 1) to t
         dt = 1. / self.num_steps * self.matthew_factor
-        noiset = (dt**0.5) * randn_like(xt) * (self.noise_level * linspace(1, 0, self.num_steps).reshape(-1, 1, 1))
+        noiset = (dt**0.5) * rx * self.noise_level
 
         for T in range(t_start, self.num_steps):
             t = tt[T]
@@ -65,7 +67,7 @@ class RectFlow(DM):
 
     def eval_val_pred(self, x, *conditions):
         """ Evaluate the actual error value and error prediction of the model """
-        t = rand(x.shape[0], 1)
+        t = rand(x.shape[0], 1, device=self.device)
         xt, x0 = self.diffuse(x, t)
         v_pred = self(xt, t, *conditions)
         v = x - x0

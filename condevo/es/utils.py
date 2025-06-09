@@ -225,7 +225,7 @@ def roulette_wheel(f, s=3., eps=1e-12, assume_sorted=False, normalize=False, con
 
 
 @torch.no_grad()
-def boltzmann_selection(f, s=3., normalize=False, consider_nans=False, threshold=0):
+def boltzmann_selection(f, s=3., normalize=False, consider_nans=False, threshold=0, eps=0.):
     """ Roulette wheel fitness transformation.
 
     We transform the fitness values f to probabilities p by applying the roulette wheel fitness transformation.
@@ -234,9 +234,9 @@ def boltzmann_selection(f, s=3., normalize=False, consider_nans=False, threshold
     the more the probabilities are concentrated on the best solutions (s can be positive or negative).
 
     :param f: torch.Tensor of shape (popsize,), fitness values of the sampled solutions
-    :param s: float, selection pressure
-    :param eps: float, epsilon to avoid division by zero
-    :param assume_sorted: bool, whether to disable sorting of the fitness values and assume that they are already sorted
+    :param s: float, selection pressure, corresponds to inverse temperature.
+    :param threshold: float, fitness cutoff ratio (highest - lowest) which are considered as "finite" weights.
+    :param eps: float, epsilon weight for samples below threshold.
     :param normalize: bool, whether to normalize the probabilities to sum to 1 (default False, i.e., the sum over
                       the returned scaled probabilities is equal to the sum over the fitness absolute values)
     :param consider_nans: bool, whether to consider NaN fitness values in the selection process
@@ -260,7 +260,7 @@ def boltzmann_selection(f, s=3., normalize=False, consider_nans=False, threshold
 
     if threshold > 0:
         f_threshold = f.min() + (f.max() - f.min()) * threshold
-        fs[f < f_threshold] = 0.  # apply threshold to fitness values
+        fs[f < f_threshold] = eps  # apply threshold to fitness values
 
     if normalize:
         fs /= fs.sum()

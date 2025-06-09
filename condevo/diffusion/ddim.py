@@ -9,7 +9,7 @@ class DDIM(DM):
 
     def __init__(self, nn, num_steps=1000, skip_connection=True, noise_level=1.0,
                  diff_range=None, lambda_range=0., predict_eps_t=False, param_mean=0.0, param_std=1.0,
-                 alpha_schedule="linear", matthew_factor=0.8, sample_uniform=False, autoscaling=False,
+                 alpha_schedule="linear", matthew_factor=1.0, sample_uniform=False, autoscaling=False,
                  log_dir="", normalize_steps=False, diff_range_filter=True,
                  clip_gradients=None):
         """ Initialize the DDIM model
@@ -25,7 +25,8 @@ class DDIM(DM):
         :param predict_eps_t: bool, Whether to predicting the noise `eps_t` for a given `xt` and `t`, or
                               or the total noise `eps` as if `t==T` for a given `xt`. Defaults to False (total noise).
         :param alpha_schedule: str, Schedule for the alpha parameter. Defaults to "linear".
-        :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling. Defaults to 0.8.
+        :param matthew_factor: float, Matthew factor for scaling the estimated error during sampling.
+                               Defaults to 1.0, set to 0.8 for exploration.
         """
         # call the base class constructor, sets nn and num_steps attributes
         super(DDIM, self).__init__(nn=nn, num_steps=num_steps, diff_range=diff_range, lambda_range=lambda_range,

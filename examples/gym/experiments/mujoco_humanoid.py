@@ -32,7 +32,3 @@ class MujocoHumanoid(ABCExperiment):
         gym_kwargs = {**self.GMY_KWARGS, **gym_kwargs}
         env_kwargs["gym_kwargs"] = gym_kwargs
         super().__init__(gym_id=self.GYM_ID, env_kwargs=env_kwargs, **kwargs)
-
-    @property
-    def num_conditions(self):
-        return 0

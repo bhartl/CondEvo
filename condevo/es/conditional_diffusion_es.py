@@ -3,6 +3,7 @@ from torch import randn, optim
 import numpy as np
 from typing import Union, Optional, Tuple
 from ..diffusion import DM, get_default_model
+from ..es import selection
 from ..es import utils
 from ..es import HADES
 from ..es.guidance import Condition, FitnessCondition
@@ -194,7 +195,7 @@ class CHARLES(HADES):
             x_dataset = x_dataset[~infty]
             conditions = tuple(c[~infty] for c in conditions)
 
-        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False)
+        weights_dataset = selection.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False)
         weights_dataset = weights_dataset.reshape(-1, 1)
         self.buffer.info['selection_probability'] = weights_dataset.clone().flatten()
 

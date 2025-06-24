@@ -129,8 +129,7 @@ def plot_2d(x, f, targets=None):
 
 
 def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
-          is_genetic=False, diffuser="DDIM", tensorboard=False,
-          score_refinement=10, refinement_generation_threshold=10,
+          is_genetic=False, diffuser="DDIM", tensorboard=False, sharpen_sampling=10,
           ):
     # define the fitness function
     targets = [[0.1, 4.0, -3.0],
@@ -152,18 +151,23 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
 
     # define the neural network
     num_params = len(targets[0])
-    mlp = MLP(num_params=num_params, num_hidden=32, num_layers=6, activation='SiLU',
-              batch_norm=True, dropout=0.1)
+    mlp = MLP(num_params=num_params, num_hidden=32, num_layers=3, activation='SiLU',
+              batch_norm=True, )
+
+    # from condevo.nn.self_attention import SelfAttentionMLP
+    # mlp = SelfAttentionMLP(num_params=num_params, num_hidden=32, num_layers=6, activation='ReLU',
+    #                         batch_norm=True, dropout=0.1, num_heads=4, num_conditions=0)
+
     # mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
     if diffuser == "DDIM":
         # define the diffusion model
         diffuser = DDIM(nn=mlp,
                         num_steps=100,
-                        noise_level=1.0,
+                        noise_level=0.5,
                         autoscaling=autoscaling,
                         sample_uniform=sample_uniform,
-                        alpha_schedule="cosine",
+                        alpha_schedule="linear",
                         matthew_factor=np.sqrt(0.5),
                         diff_range=10.0,
                         # predict_eps_t=True,
@@ -174,8 +178,8 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
     else:
         # define the fect flow
         diffuser = RectFlow(nn=mlp,
-                            num_steps=300,
-                            noise_level=1.0,
+                            num_steps=100,
+                            noise_level=0.5,
                             autoscaling=autoscaling,
                             sample_uniform=sample_uniform,
                             matthew_factor=np.sqrt(0.5),
@@ -187,7 +191,7 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
     solver = HADES(num_params=num_params,
                    model=diffuser,
                    popsize=popsize,
-                   sigma_init=2.0,
+                   sigma_init=3.0,
                    is_genetic_algorithm=is_genetic,
                    selection_pressure=10,
                    adaptive_selection_pressure=False,            # chose seletion_pressure such that `elite_ratio` individuals have cumulative probability
@@ -200,7 +204,7 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
                    ###########################################
                    ###########################################
                    ## protect locals
-                   elite_ratio=0.1 if not is_genetic else 0.4,
+                   elite_ratio=0.2 if not is_genetic else 0.4,
                    mutation_rate=0.05,
                    unbiased_mutation_ratio=0.1,
                    readaptation=True,
@@ -213,23 +217,22 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
                    diff_max_epoch=100,
                    diff_batch_size=256,
                    diff_weight_decay=1e-6,
-                   buffer_size=0,
+                   buffer_size=0,  # don't restrict buffer size
                    diff_continuous_training=False,
                    )
 
     # evolutionary loop
     x, f = [], []
     for g in range(generations):
-        if g > refinement_generation_threshold and score_refinement:
-            solver.unbiased_mutation_ratio = 1e-6
-            solver.readaptation = score_refinement
-
         x_g = solver.ask()          # sample new parameters
         f_g = foo(x_g, targets)     # evaluate fitness
         print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
         solver.tell(f_g)            # tell the solver the fitness of the parameters
         x.append(x_g)
         f.append(f_g)
+
+        if g > sharpen_sampling:
+            solver.model.matthew_factor = 1.0  # first go for diversity, then sharpen sampling after `N` generations
 
     if num_params == 3:
         # plotting results
@@ -241,8 +244,7 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
 
 
 def charles(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
-            is_genetic=False, diffuser="DDIM", tensorboard=False,
-            score_refinement=0, refinement_generation_threshold=10,
+            is_genetic=False, diffuser="DDIM", tensorboard=False, sharpen_sampling=10,
             disable_knn_condition=False, disable_fitness_condition=False,
             diff_continuous_training=False,
             ):
@@ -267,17 +269,19 @@ def charles(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
     conditions = []
     # define the KNN novelty condition
     if not disable_knn_condition:
+        print("Using KNN novelty condition")
         knn_condition = KNNNoveltyCondition(k=popsize//len(targets), metric=2, beta=10., weight_by_fitness=True, eps=1e-8)
         conditions.append(knn_condition)
 
     if not disable_fitness_condition:
+        print("Using fitness condition")
         fitness_condition = FitnessCondition(scale=1.0, greedy=False)
         conditions.append(fitness_condition)
 
     # define the neural network
     num_params = len(targets[0])
-    mlp = MLP(num_params=num_params, num_hidden=32, num_layers=6, activation='SiLU',
-              batch_norm=True, dropout=0.1,
+    mlp = MLP(num_params=num_params, num_hidden=32, num_layers=3, activation='SiLU',
+              batch_norm=True, # dropout=0.1,
               num_conditions=len(conditions))
     # mlp = mlp.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
@@ -326,7 +330,7 @@ def charles(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
                    diff_max_epoch=100,
                    diff_batch_size=256,
                    diff_weight_decay=1e-6,
-                   buffer_size=0,
+                   buffer_size=0,  # don't restrict buffer size
                    diff_continuous_training=diff_continuous_training,
                    conditions=conditions
                    )
@@ -334,16 +338,15 @@ def charles(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
     # evolutionary loop
     x, f = [], []
     for g in range(generations):
-        if g > refinement_generation_threshold and score_refinement:
-            solver.unbiased_mutation_ratio = 1e-6
-            solver.readaptation = score_refinement
-
         x_g = solver.ask()          # sample new parameters
         f_g = foo(x_g, targets)     # evaluate fitness
         print(f"Generation {g} -> fitness: {f_g.max()}, diversity: {diversity(x_g)}")
         solver.tell(f_g)            # tell the solver the fitness of the parameters
         x.append(x_g)
         f.append(f_g)
+
+        if g > sharpen_sampling:
+            solver.model.matthew_factor = 1.0  # first go for diversity, then sharpen sampling after `N` generations
 
     if num_params == 3:
         # plotting results
@@ -355,6 +358,13 @@ def charles(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
 
 
 def hades_GA_refined(generations=20, popsize=512, autoscaling=True, sample_uniform=True, tensorboard=False):
+    """ use HADES alternatingly with and without genetic algorithm training, i.e.,
+        at every generation, first
+        train the diffusion model weighted by fitness (increases diversity)
+        and train the diffusion model on the best individuals (increases convergence).
+        After the weight-based training, data are included into the DataBuffer following the "quality" criterion,
+        and after the genetic algorithm training, data are included following the "diversity" criterion.
+        """
     # define the fitness function
     targets = [[0.1, 4.0, -3.0],
                [-2., 0.5, -0.25],
@@ -448,7 +458,7 @@ def hades_score_refined(generations=20, popsize=512, autoscaling=True, sample_un
 
     # define the diffusion model
     diffuser = DDIM(nn=mlp,
-                    num_steps=1000,
+                    num_steps=100,
                     noise_level=0.1,
                     autoscaling=autoscaling,
                     sample_uniform=sample_uniform,
@@ -648,7 +658,7 @@ def half_hades(generations=20,
 
         fx_plain = fx.cpu().clone().detach()
         if selection == "roulette_wheel":
-            fx = roulette_wheel(f=fx.view(-1,1), s=10, assume_sorted=False, threshold=0.5) # higher S mean more greedy selection
+            fx = roulette_wheel(f=fx.view(-1,1), s=10, threshold=0.5) # higher S mean more greedy selection
         else:
             fx = boltzmann_selection(f=fx.view(-1,1),
                                      s=0.8 * (1 + g/generations),

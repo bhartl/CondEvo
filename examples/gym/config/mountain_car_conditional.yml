@@ -12,10 +12,8 @@ experiment_config:
 #    max_steps: 10
 es: CHARLES
 conditions:
-  position_condition:
-    target: 0.5
-    horizon: 1
-    agg: max
+  x_range_condition:  # see get_x_range_condition in MountainCar environment
+    agg: max          # go greedy for the maximum x range (max - min cart positions across episodes)
 #  fitness_condition:
 #    scale: 200
 #    greedy: true
@@ -24,8 +22,8 @@ conditions:
 #    weight_by_fitness: false
 generations: 100
 es_config:
-  popsize: 10
-  sigma_init: 0.2
+  popsize: 128
+  sigma_init: 1.0
   is_genetic_algorithm: False
   selection_pressure: 8.0            # selection pressure for roulette wheel selection
   adaptive_selection_pressure: False # whether to adapt the selection pressure
@@ -42,19 +40,19 @@ es_config:
   diff_batch_size: 256               # DM: batch size for training the diffusion model
   diff_max_epoch: 500                # DM: number of training steps for the diffusion model at each generation
   diff_continuous_training: False    # DM: continuous training, or retrain diffusion model at each generation
-  buffer_size: 3
+  buffer_size: 5
 diff: DDIM
 diff_config:
-  num_steps: 1000
-  noise_level: 0.1
+  num_steps: 100
+  noise_level: 0.5
   diff_range: 5
   sample_uniform: False
   autoscaling: False
-  matthew_factor: 0.8
+  matthew_factor: 1.0
 nn: MLP
 nn_config:
-  num_hidden: 196
-  num_layers: 3
+  num_hidden: 96
+  num_layers: 6
   activation: ELU
-  # batch_norm: True
+  batch_norm: True
   # dropout: 0.1

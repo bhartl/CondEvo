@@ -1,7 +1,7 @@
 import os
 import json
 import torch
-from condevo.es.guidance import Condition, FitnessCondition, KNNNoveltyCondition
+from condevo.es.guidance import FitnessCondition, KNNNoveltyCondition
 from condevo.es.guidance import Condition
 from mindcraft import World
 from mindcraft import Agent
@@ -78,6 +78,8 @@ class ABCExperiment:
 
     def get_knn_novelty_condition(self, **kwargs):
         return KNNNoveltyCondition(**kwargs)
+
+    # NOTE: For custom conditions, see the CartPole, MountainCar, or LunarLander examples !!!
 
     @property
     def env(self):
@@ -290,44 +292,3 @@ class ABCExperiment:
         if self.mindcraft_agent is None:
             self.mindcraft_agent = self.get_agent()
         return len(self.mindcraft_agent.get_parameters())
-
-
-class PositionCondition(Condition):
-    def __init__(self, target=0.5, horizon=1, agg=torch.mean, label="Agent Position", pos_observable=0):
-        Condition.__init__(self)
-        self.target = target
-        self.agg = agg
-
-        # helpers
-        self.evaluation = None
-        self.sampling = None
-        self.label = label
-
-        self.horizon = horizon
-        self.pos_observable = pos_observable
-
-    @torch.no_grad()
-    def evaluate(self, charles_instance, x, f):
-        # evaluate cart position from log history
-        # from array-shape (size x n_episodes x *obs_shape) -> (size x n_episodes x horizon steps x features)
-        horizon_cart_pos = charles_instance.world_log["observation"][:, :, -self.horizon:, self.pos_observable]
-
-        horizon_cart_pos = torch.tensor(horizon_cart_pos, device=x.device, dtype=x.dtype)
-        mean_cart_pos = self.agg(horizon_cart_pos.mean(dim=2), dim=1)  # mean features, agg over episodes
-        if isinstance(mean_cart_pos, tuple):
-            mean_cart_pos = mean_cart_pos.values
-        self.evaluation = mean_cart_pos[charles_instance._fitness_argsort]
-        return self.evaluation
-
-    def sample(self, charles_instance, num_samples):
-        sigma = (self.target - self.evaluation.mean()).abs()
-        nearest = (self.evaluation - self.target).abs().argmin()
-        offset = torch.sign(self.target - self.evaluation[nearest]) * 0.125
-        self.sampling = self.evaluation[nearest] + (torch.randn(num_samples) + offset) * 0.1
-
-        print(self.label, "evaluation:", self.evaluation.min(), self.evaluation.mean(), self.evaluation.max())
-        print(self.label, "sampling  :", self.sampling.min(), self.sampling.mean(), self.sampling.max())
-        return self.sampling
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(target={self.target}, horizon={self.horizon})"

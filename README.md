@@ -1,9 +1,10 @@
-# Conditional Evolution
+# Conditional Diffusion Evolution
+
+Introduced in [Heuristically Adaptive Diffusion-Model Evolutionary Strategy](https://arxiv.org/abs/2411.13420).
+
 The package comprises the following methods:
 - [`condevo.es.HADES`](condevo/es/heuristical_diffusion_es.py): Heuristically Adaptive Diffusion-Model Evolutionary Strategy
 - [`condevo.es.CHARLES`](condevo/es/conditional_diffusion_es.py): Conditional, Heuristically-Adaptive ReguLarized Evolutionary Strategy through Diffusion
-
-introduced in [Heuristically Adaptive Diffusion-Model Evolutionary Strategy](https://arxiv.org/abs/2411.13420).
 
 ## Installation
 
@@ -17,10 +18,7 @@ To install dependencies for the examples, you might first install the code depen
 - `foobench` (see [install instructions](https://github.com/bhartl/foobench) on GitHub)
 - `mincraft` (see [install instructions](https://github.com/bhartl/NeurEvo) on GitHub)
 
-Then, you may install the examples dependencies via
-```bash
-
-and then install the examples dependencies package via
+You may install the examples dependencies via
 ```bash
 pip install -e .[examples]
 ```
@@ -31,6 +29,9 @@ Since the code is intended for evolutionary optimization, the parallelization is
 ```bash
 pip install -e . --extra-index-url https://download.pytorch.org/whl/cpu
 ```
+
+## Examples
+see the [examples](examples) directory for example usage of the methods.
 
 ## Citation
 If you use this code in your research, please cite the following paper:

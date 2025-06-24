@@ -2,10 +2,11 @@ import torch
 from torch import randn, optim
 import numpy as np
 from typing import Union, Optional, Tuple
-from condevo.diffusion import DM, get_default_model
-from condevo.es import utils
-from condevo.es import HADES
-from condevo.es.guidance import Condition, FitnessCondition
+from ..diffusion import DM, get_default_model
+from ..es import selection
+from ..es import utils
+from ..es import HADES
+from ..es.guidance import Condition, FitnessCondition
 
 
 class CHARLES(HADES):
@@ -19,12 +20,15 @@ class CHARLES(HADES):
                  x0: Optional[np.ndarray] = None,
                  is_genetic_algorithm=False,
                  selection_pressure=3.,
+                 selection_method='roulette_wheel',
+                 selection_threshold=0.0,
                  adaptive_selection_pressure=False,
                  elite_ratio=0.1,
                  forget_best=True,
                  crossover_ratio=0.0,
                  mutation_rate=0.0,
                  unbiased_mutation_ratio=0.0,
+                 random_mutation_ratio=0.0625,
                  readaptation=False,
                  weight_decay: float = 0.0,
                  reg: str = 'l2',
@@ -38,7 +42,7 @@ class CHARLES(HADES):
                  to_numpy: bool = False,
                  buffer_size: int = 4,
                  training_interval: int = 1,
-                 diversity_selection: bool = False,
+                 device="cpu"
                  ):
         """ Constructs a CHARLES-Diffusion optimizer.
 
@@ -70,6 +74,8 @@ class CHARLES(HADES):
                                         individuals are mutated, where for each individual, `model.num_steps * mutation_rate`
                                         genes are mutated by Gaussian noise of scale `sigma_init`.
                                         This option is compatible with `readaptation`.
+        :param random_mutation_ratio: float, ratio of the population that is mutated by adding random noise over
+                                      the entire parameter range (this is not subject to any potential readaptation).
         :param readaptation: bool, whether to refine the mutated samples by applying denoising for
                                     `model.num_steps * mutation_rate` steps (i.e., try to revert the mutations).
         :param forget_best: bool, whether to protect the elite solution from being replaced and mutated.
@@ -88,15 +94,13 @@ class CHARLES(HADES):
         :param buffer_size: int, size of the buffer to store the solutions and conditions for training the diffusion
                             model.
         :param training_interval: int, number of generations between training the diffusion model
-        :param diversity_selection: bool, whether to use diversity selection for the buffer. If True, the buffer is
-                                    updated with the best samples from the population by replacing the closest samples
-                                    in the buffer with the new samples. If False, the buffer is updated with the best
-                                    samples from the population by replacing the worst samples in the buffer with the
-                                    new samples.
         """
 
         if model is None or isinstance(model, str):
             model = get_default_model(dm_cls=model, num_params=num_params, num_conditions=len(conditions))
+
+        self.conditions = conditions
+        self.condition_values = None
 
         super().__init__(num_params=num_params,
                          model=model,
@@ -104,12 +108,15 @@ class CHARLES(HADES):
                          sigma_init=sigma_init,
                          x0=x0,
                          is_genetic_algorithm=is_genetic_algorithm,
+                         selection_method=selection_method,
                          selection_pressure=selection_pressure,
+                         selection_threshold=selection_threshold,
                          adaptive_selection_pressure=adaptive_selection_pressure,
                          elite_ratio=elite_ratio,
                          crossover_ratio=crossover_ratio,
                          mutation_rate=mutation_rate,
                          unbiased_mutation_ratio=unbiased_mutation_ratio,
+                         random_mutation_ratio=random_mutation_ratio,
                          readaptation=readaptation,
                          forget_best=forget_best,
                          weight_decay=weight_decay,
@@ -124,11 +131,8 @@ class CHARLES(HADES):
                          to_numpy=to_numpy,
                          buffer_size=buffer_size,
                          training_interval=training_interval,
-                         diversity_selection=diversity_selection,
+                         device=device,
                          )
-
-        self.conditions = conditions
-        self.condition_values = None
 
     def ask(self):
         """ Sample solutions from the diffusion model.
@@ -173,14 +177,16 @@ class CHARLES(HADES):
     def selection(self):
         x = self.solutions
         fitness = self.fitness
-        self.update_buffer(x, fitness)
+        if x is not None:
+            conditions = self.evaluate_conditions(x, fitness)
+            self.buffer.push(x, fitness, *conditions)
 
         # get buffer dataset
-        x_dataset = self.buffer['x']
-        conditions = self.buffer['conditions']
+        x_dataset = self.buffer.x
+        conditions = self.buffer.conditions
 
         # evaluate roulette wheel selection for buffer samples
-        f_dataset = self.buffer['fitness'].flatten()
+        f_dataset = self.buffer.fitness.flatten()
 
         # check for nans (e.g. runaway parameters)
         if torch.isinf(f_dataset).any() or torch.isnan(f_dataset).any():
@@ -189,9 +195,9 @@ class CHARLES(HADES):
             x_dataset = x_dataset[~infty]
             conditions = tuple(c[~infty] for c in conditions)
 
-        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=True)
-        self.buffer['selection_probability'] = weights_dataset.clone().flatten()
+        weights_dataset = selection.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=False)
         weights_dataset = weights_dataset.reshape(-1, 1)
+        self.buffer.info['selection_probability'] = weights_dataset.clone().flatten()
 
         # evaluate potential regularization term to reinforce conditions by discounting deviations from the conditions
         if self.is_genetic_algorithm:
@@ -201,65 +207,13 @@ class CHARLES(HADES):
             conditions = tuple(c[selected_genotypes] for c in conditions)
             weights_dataset = None  # disable weights for DM training
 
+        else:
+            weights_dataset = weights_dataset / weights_dataset.max()
+
         return (x_dataset, conditions), weights_dataset
 
-    def update_buffer(self, x, fitness):
-        conditions = self.evaluate_conditions(x, fitness)
-
-        if torch.isnan(fitness).any() or torch.isinf(fitness).any():
-            fitness[torch.isnan(fitness)] = -np.infty
-
-        if 'x' not in self.buffer:
-            self.buffer['x'] = x.clone()
-            self.buffer['fitness'] = fitness.clone()
-            self.buffer['conditions'] = tuple(c.clone() for c in conditions)
-
-        else:
-            if self.buffer['x'].shape[0] >= self.buffer_size * self.popsize:
-                # remove nan values from buffer
-                is_nan = torch.isnan(self.buffer['fitness'])
-                num_nan = torch.sum(is_nan)
-                if num_nan:
-                    self.buffer['x'] = self.buffer['x'][~is_nan]
-                    self.buffer['fitness'] = self.buffer['fitness'][~is_nan]
-                    self.buffer['conditions'] = tuple(c[~is_nan] for c in self.buffer['conditions'])
-
-                if not self.diversity_selection:
-                    # remove old samples from buffer with lowest fitness
-                    num_replace = self.popsize - num_nan
-                    indices = self.buffer['fitness'].flatten().argsort()
-                    self.buffer['x'] = self.buffer['x'][indices[num_replace:]]
-                    self.buffer['fitness'] = self.buffer['fitness'][indices[num_replace:]]
-                    self.buffer['conditions'] = tuple(c[indices[num_replace:]] for c in self.buffer['conditions'])
-
-                else:
-                    # replace novel samples by maximizing the diversity of the buffer
-                    indices = []
-                    for xi, fi, ci in zip(x, fitness, conditions):
-                        # find the most similar sample in the buffer
-                        distances = torch.cdist(xi.reshape(1, -1), self.buffer['x']).flatten()
-                        # get the index of the most similar sample
-                        for index in distances.argsort():
-                            # replace the most similar sample with the new sample, if it is better
-                            if self.buffer['fitness'][index] < fi and index not in indices:
-                                # replace the sample in the buffer
-                                self.buffer['x'][index] = xi
-                                self.buffer['fitness'][index] = fi
-                                for i in range(len(self.buffer['conditions'])):
-                                    # replace the condition in the buffer
-                                    self.buffer['conditions'][i][index] = ci
-
-                                indices += [index]
-                                break
-
-                    self.buffer['replaced'] = torch.tensor(indices)
-
-            self.buffer['x'] = torch.cat((self.buffer['x'], x), dim=0)
-            self.buffer['fitness'] = torch.cat((self.buffer['fitness'], self.fitness), dim=0)
-            self.buffer['conditions'] = tuple(torch.cat((self.buffer['conditions'][i], c), dim=0) for i, c in enumerate(conditions))
-
     def sample_conditions(self, num_samples):
-        samples = [c.sample(charles_instance=self, num_samples=num_samples) for c in self.conditions]
+        samples = [c.sample(charles_instance=self, num_samples=num_samples) for i, c in enumerate(self.conditions)]
         for i in range(len(samples)):
             if samples[i].dim() == 1:
                 samples[i] = samples[i].reshape(-1, 1)
@@ -273,6 +227,9 @@ class CHARLES(HADES):
 
         self.condition_values = tuple(conditions)
         return self.condition_values
+
+    def transform_conditions(self, values):
+        return [c.transform(charles_instance=self, values=v) for c, v in zip(self.conditions, values)]
 
     @property
     def elite_conditions(self):
@@ -288,6 +245,8 @@ class CHARLES(HADES):
 
         if not self.diff_continuous_training:
             self.model.init_nn()
+            self.model = self.model.to(self.device)
 
         x, conditions = dataset
-        return self.model.fit(x, *conditions, weights=weights, **self.diff_kwargs)
+        training_conditions = self.transform_conditions(conditions)
+        return self.model.fit(x, *training_conditions, weights=weights, **self.diff_kwargs)

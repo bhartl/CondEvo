@@ -16,6 +16,15 @@ class Condition:
         """
         raise NotImplementedError("Evaluation method not implemented.")
 
+    def transform(self, charles_instance, values: Tensor) -> Tensor:
+        """ Transform the evaluated input condition (defaults to identity transformation).
+
+        :param charles_instance: CHARLES instance
+        :param values: torch.Tensor, input tensor representing the condition values
+        :return: torch.Tensor, transformed condition values.
+        """
+        return values
+
     def sample(self, charles_instance, num_samples: int) -> Tensor:
         """ Sample from the condition.
 
@@ -28,3 +37,15 @@ class Condition:
     def to_dict(self):
         """ Convert the condition to a dictionary. """
         return dict()
+
+    def get_index(self, charles_instance):
+        """ Get the index of the condition in the CHARLES instance.
+
+        :param charles_instance: CHARLES instance
+        :return: int, index of the condition in the CHARLES instance.
+        """
+        for i, c in enumerate(charles_instance.conditions):
+            if c == self:
+                return i
+
+        raise ValueError("Condition not found in CHARLES instance.")

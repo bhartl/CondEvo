@@ -115,11 +115,14 @@ class ABCExperiment:
         input_size = self.get_input_size()
         output_size = self.get_output_size()
 
-        num_hidden = int(self.get_default("num_hidden"))
-        num_layers = int(self.get_default("num_layers"))
-
         policy_module = None
+        kwargs = {}
         if self.agent == "FF":
+            from mindcraft.agents import TorchAgent
+
+            num_hidden = int(self.get_default("num_hidden"))
+            num_layers = int(self.get_default("num_layers"))
+
             # define the feed-forward policy module
             policy_module = FeedForward(
                 input_size=input_size,
@@ -129,7 +132,12 @@ class ABCExperiment:
             )
 
         elif self.agent in ["RNN", "LSTM", "GRU", "RGRN"]:
+            from mindcraft.agents import TorchAgent
+
             # define the recurrent policy module
+            num_hidden = int(self.get_default("num_hidden"))
+            num_layers = int(self.get_default("num_layers"))
+
             policy_module = Recurrent(
                 input_size=input_size,
                 output_size=output_size,
@@ -137,6 +145,63 @@ class ABCExperiment:
                 num_layers=num_layers,
                 layer_type=self.agent,
             )
+
+        elif self.agent == "QKV":
+            from mindcraft.agents import SensoryNeuronAgent as TorchAgent
+            from mindcraft.torch.module import SetTransformer as SetT
+            from mindcraft.torch.module.projection import LinearP
+            from mindcraft.torch.module.embedding import SensoryEmbedding
+
+            action_foldback = int(self.get_default("action_foldback"))
+            projection_size = int(self.get_default("projection_size"))
+            embedding_size = int(self.get_default("embedding_size"))
+            pos_embedding = int(self.get_default("pos_embedding"))
+            context_size = int(self.get_default("context_size"))
+            hidden_size = int(self.get_default("hidden_size"))
+            query_size = int(self.get_default("query_size"))
+            num_heads = int(self.get_default("num_heads"))
+
+            channels = 1 if not pos_embedding else embedding_size    # positional embedding overlayed on channels
+            key_channels = channels + output_size * action_foldback  # action foldback channels possible for key
+
+            # define the key embedding model of the sensors (input -> projection -> sensor embedding_size)
+            key_batch = LinearP(input_size=key_channels, projection_size=projection_size, is_nested=True, retain_grad=False)
+            sensor = Recurrent(input_size=projection_size, hidden_size=embedding_size, output_size=embedding_size, layer_type="RGRN",
+                               is_nested=True, retain_grad=False)
+            key_embed = SensoryEmbedding(projection=key_batch, sensor=sensor)
+
+            # define the value embedding model of the sensors (input -> projection embedding_size)
+            val_batch = LinearP(input_size=channels, projection_size=embedding_size, is_nested=True, retain_grad=False)
+            val_embed = SensoryEmbedding(projection=val_batch)
+
+            # define the controller model (from context x num_heads -> action)
+            controller = Recurrent(
+                input_size=context_size * num_heads,
+                hidden_size=hidden_size,
+                layer_type="RGRN",
+                output_size=output_size,
+                is_nested=True,
+                retain_grad=False,
+            )
+
+            # define set transformer as policy module
+            policy_module = SetT(
+                input_size=1,  # num channels
+                seq_len=input_size,
+                channels_first=False,
+                key_embed=key_embed,
+                val_embed=val_embed,
+                qry_size=query_size,
+                val_size=num_heads,
+                context_size=context_size,
+                disable_pos_embed=not pos_embedding,
+                qkv_bias=True,
+                retain_grad=False,
+                activation="Softmax",
+                head=controller,  # context to action
+            )
+
+            kwargs["foldback_attrs"] = ("action", ) if action_foldback else ()
 
         elif self.agent not in self.AGENT_ARCHITECTURES:
             raise NotImplementedError(f"Agent-architecture '{self.agent}' not implemented, "
@@ -155,6 +220,8 @@ class ABCExperiment:
             clip=clip,
             retain_grad=False,
             policy_module=policy_module,
+            parameter_scale=self.agent_kwargs.get("parameter_scale", 1.0),
+            **kwargs
         )
 
         return self.mindcraft_agent
@@ -169,7 +236,7 @@ class ABCExperiment:
     def get_agent_file(self, diff_instance, es, timestamp=None):
         if diff_instance is None:
             diff = es
-            es = "mindcraft"
+            es = es
         elif not isinstance(diff_instance, str):
             diff = diff_instance.__class__.__name__
         else:
@@ -241,17 +308,22 @@ class PositionCondition(Condition):
 
     @torch.no_grad()
     def evaluate(self, charles_instance, x, f):
-        # evaluate cart position from log history, array-shape (size x n_episodes)
-        horizon_cart_pos = charles_instance.world_log["observation"][:, :, -self.horizon:,
-                           self.pos_observable]  # (size x n_episodes x steps x features)
+        # evaluate cart position from log history
+        # from array-shape (size x n_episodes x *obs_shape) -> (size x n_episodes x horizon steps x features)
+        horizon_cart_pos = charles_instance.world_log["observation"][:, :, -self.horizon:, self.pos_observable]
+
         horizon_cart_pos = torch.tensor(horizon_cart_pos, device=x.device, dtype=x.dtype)
         mean_cart_pos = self.agg(horizon_cart_pos.mean(dim=2), dim=1)  # mean features, agg over episodes
+        if isinstance(mean_cart_pos, tuple):
+            mean_cart_pos = mean_cart_pos.values
         self.evaluation = mean_cart_pos[charles_instance._fitness_argsort]
         return self.evaluation
 
     def sample(self, charles_instance, num_samples):
-        sigma = (self.target - self.evaluation.mean()).abs().sqrt() * 0.5
-        self.sampling = self.target + torch.randn(num_samples) * sigma
+        sigma = (self.target - self.evaluation.mean()).abs()
+        nearest = (self.evaluation - self.target).abs().argmin()
+        offset = torch.sign(self.target - self.evaluation[nearest]) * 0.125
+        self.sampling = self.evaluation[nearest] + (torch.randn(num_samples) + offset) * 0.1
 
         print(self.label, "evaluation:", self.evaluation.min(), self.evaluation.mean(), self.evaluation.max())
         print(self.label, "sampling  :", self.sampling.min(), self.sampling.mean(), self.sampling.max())

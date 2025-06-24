@@ -1,10 +1,12 @@
 import torch
-from torch import randn, optim, tensor, zeros, Tensor
+from torch import rand, randn, optim, tensor, zeros, Tensor
 import numpy as np
 from scipy.optimize import minimize
-from typing import Union
-from condevo.diffusion import DM, DDIM, RectFlow, get_default_model
-from condevo.es import utils
+from ..diffusion import DM, DDIM, RectFlow, get_default_model
+from ..es import utils
+from ..es import selection
+from .data import DataBuffer
+from typing import Optional, Union
 
 
 class HADES:
@@ -28,13 +30,16 @@ class HADES:
                  sigma_init=1.0,
                  x0=None,
                  is_genetic_algorithm=False,
+                 selection_method="roulette_wheel",
                  selection_pressure=3.,
+                 selection_threshold=0.0,
                  adaptive_selection_pressure=False,
                  elite_ratio=0.1,
                  forget_best=True,
                  crossover_ratio=0.0,
                  mutation_rate=0.0,
                  unbiased_mutation_ratio=0.0,
+                 random_mutation_ratio=0.0625,
                  readaptation=False,
                  weight_decay=0.0,
                  reg='l2',
@@ -47,8 +52,9 @@ class HADES:
                  diff_sample_kwargs: dict = None,
                  to_numpy=False,
                  eps: float = 1e-12,
-                 buffer_size: int = 4,
+                 buffer_size: Optional[Union[int, dict, DataBuffer]] = 4,
                  training_interval: int = 1,
+                 device: Optional[torch.device] = 'cpu'
                  ):
         """ Constructs a SHADES optimizer.
 
@@ -66,7 +72,9 @@ class HADES:
                                      for training the DM via roulette wheel selection of the solution's fitness.
                                      In the case of the algorithm being used as evolutionary, the solution are weighted by
                                      their fitness when training the diffusion model.
-        :param selection_pressure: float, selection pressure for the `roulette_wheel` fitness transformation
+        :param selection_method: str, selection method to use for the selection of the solutions, defaults to `selection.roulette_wheel`.
+                                 Needs to take arguments `f` (fitness values), `s` (selection pressure), `normalize` (bool), `threshold` (float [0, 1]).
+        :param selection_pressure: float, selection pressure for the selected fitness transformation (defaults to `selection.roulette_wheel`)
         :param adaptive_selection_pressure: bool, whether to adapt the selection pressure, so the elite solutions
                                             have a probability of (1-elite_ratio) to be selected. If False, the
                                             selection pressure is fixed, otherwise the selection pressure is the
@@ -83,9 +91,11 @@ class HADES:
         :param unbiased_mutation_ratio: float, ratio of the population that is mutated without applying the diffusion,
                                         while no mutations with diffusion are applied to any subset of the population.
                                         If this value is non-zero, a total of `popsize * unbiased_mutation_ratio`
-                                        individuals are mutated, where for each individual, `model.num_steps * mutation_rate`
+                                        individuals are mutated, where for each individual, `num_parameters * mutation_rate`
                                         genes are mutated by Gaussian noise of scale `sigma_init`.
                                         This option is compatible with `readaptation`.
+        :param random_mutation_ratio: float, ratio of the population that is mutated by adding random noise over
+                                      the entire parameter range (this is not subject to any potential readaptation).
         :param readaptation: bool, whether to refine the mutated samples by applying denoising for
                              `model.num_steps * mutation_rate` steps (i.e., try to revert the mutations).
         :param forget_best: bool, whether to protect the elite solution from being replaced and mutated.
@@ -102,8 +112,10 @@ class HADES:
         :param to_numpy: bool, whether to return the solutions as numpy arrays
         :param buffer_size: int, size of the buffer to store the solutions, fitness and probabilities for training the diffusion model.
         :param training_interval: int, number of sampled generations between retraining the diffusion model.
+        :param device: torch.device, device to use for the diffusion model and the solutions.
         """
 
+        self.device = device
         self.num_params = num_params
         self.popsize = popsize
         self.weight_decay = weight_decay
@@ -114,7 +126,10 @@ class HADES:
             x0 = zeros(self.num_params)
         assert x0.shape == (self.num_params,), x0.shape
         self.x0 = x0
+
+        self.selection_method = getattr(selection, selection_method) if isinstance(selection_method, str) else selection_method
         self.selection_pressure = selection_pressure  # selection_pressure initial value
+        self.selection_threshold = selection_threshold
         self.adaptive_selection_pressure = adaptive_selection_pressure
         self.is_genetic_algorithm = is_genetic_algorithm
 
@@ -126,11 +141,14 @@ class HADES:
 
         self.mutation_rate = mutation_rate  # mutation rate, intrinsically performed via DM
         self.unbiased_mutation_ratio = unbiased_mutation_ratio
+        self.random_mutation_ratio = random_mutation_ratio
         self.readaptation = readaptation
 
         if model is None or isinstance(model, str):
             model = get_default_model(dm_cls=model, num_params=num_params)
-        self.model = model
+            model = model.to(device)
+
+        self.model = model.to(device)
         self.diff_optim = diff_optim
         self.diff_lr = diff_lr
         self.diff_weight_decay = diff_weight_decay
@@ -150,11 +168,37 @@ class HADES:
         self.best_solution = None
         self.best_fitness = -torch.inf
 
-        self.buffer = {}
-        self.buffer_size = buffer_size
+        self._buffer = None
+        self.buffer = buffer_size
 
         self.training_interval = training_interval
         self._asked = 0
+
+    @property
+    def buffer(self):
+        """ Buffer for the solutions, fitness and conditions for training the diffusion model. """
+        return self._buffer
+
+    @buffer.setter
+    def buffer(self, value: Union[int, dict, DataBuffer]):
+        if isinstance(value, int):
+            self._buffer = DataBuffer(max_size=value * self.popsize, num_conditions=self.model.num_conditions)
+
+        elif isinstance(value, dict):
+            kwargs = dict()
+            if 'max_size' in value:
+                kwargs['max_size'] = value.pop('max_size') * self.popsize
+
+            if "num_conditions" not in value:
+                value["num_conditions"] = self.model.num_conditions
+
+            self._buffer = DataBuffer(**kwargs, **value)
+
+        elif isinstance(value, DataBuffer):
+            self._buffer = value
+
+        else:
+            raise ValueError("Buffer must be an int, dict or DataBuffer instance.")
 
     @property
     def num_elite(self):
@@ -230,15 +274,23 @@ class HADES:
 
         return self.solutions
 
-    def tell(self, reward_table_result):
+    def tell(self, reward_table_result, parameters=None):
         """ Train the diffusion model on the best solution.
 
         :param reward_table_result: torch.Tensor of shape (popsize,), fitness values of the sampled solutions
+        :param parameters: torch.Tensor of shape (popsize, num_params), optional parameters to update the solutions
 
         """
         # sort the solutions by fitness, starting with the best solution
         fitness, fitness_argsort = self.get_fitness_argsort(reward_table_result)
         self.fitness = fitness
+        if parameters is not None:
+            # update the solutions with the given parameters
+            if self.solutions is None:
+                self.solutions = parameters
+            else:
+                self.solutions[:] = parameters
+
         self._fitness_argsort = fitness_argsort
         self.solutions = self.solutions[fitness_argsort]
         self.selection_pressure = self.get_selection_pressure(fitness)
@@ -298,13 +350,13 @@ class HADES:
         return samples
 
     def get_crossover(self, num_crossover, *conditions):
-        # roulette_wheel probability for selection
-        p = utils.roulette_wheel(utils.tensor_to_numpy(self.elite_fitness), s=self.selection_pressure, normalize=True)
+        # get probability for selection
+        p = self.selection_method(self.elite_fitness, **self.selection_kwargs)
 
         # sample crossover solutions
         xt_crossover = []
         for i in range(num_crossover):
-            # select two parents via roulette wheel selection, either from elites or from all if elite_ratio = 0
+            # select two parents either from elites or from all if elite_ratio = 0
             j, k = np.random.choice(np.arange(0, self.num_elite or self.popsize), size=2, p=p, replace=False)
             p1 = self.elites[j]
 
@@ -359,15 +411,26 @@ class HADES:
 
         else:
             mutate_indices = torch.rand(samples.shape[0]) < self.unbiased_mutation_ratio
-            mutated_samples, _ = self.model.diffuse(samples[mutate_indices], t=t_diffuse)
-            samples[mutate_indices] = mutated_samples
+            mutated_samples = samples[mutate_indices]
+            mutated_samples, _ = self.model.diffuse(mutated_samples, t=t_diffuse)
 
-        if self.readaptation:
+        for _ in range(int(self.readaptation)):
             # refine the diffused/mutated samples by applying denoising for a few steps
             adaptive_diff_steps = int(np.rint(t_diffuse * (self.model.num_steps - 1)))  # be careful about T max
             samples = self.model.sample(x_source=samples, shape=(self.num_params,),
                                         t_start=adaptive_diff_steps, conditions=conditions,
                                         **self.diff_sample_kwargs)
+
+        if self.random_mutation_ratio:
+            # add random Gaussian noise to the samples
+            random_indices = torch.rand(samples.shape[0]) < self.random_mutation_ratio
+            for i in torch.where(random_indices)[0]:
+                std = torch.maximum(self.model.param_std.flatten(), tensor(self.sigma_init, dtype=samples.dtype, device=samples.device))
+                random_noise = (rand(self.num_params) - 0.5) * std * 3.
+                samples[i, :] += random_noise
+
+            # clip the samples to the parameter range according to the diff_range policy of the DM
+            samples[:] = self.model.diff_clamp(samples)
 
         return samples
 
@@ -384,7 +447,7 @@ class HADES:
         return reward_table[argsort_reward], argsort_reward
 
     def get_selection_pressure(self, fitness):
-        """ Return the selection pressure for the roulette wheel selection, so the current populations
+        """ Return the selection pressure for the chosen selection method, so the current populations
             elites make up (1-elite_ratio) . """
 
         if not self.adaptive_selection_pressure or not self.elite_ratio:
@@ -392,49 +455,29 @@ class HADES:
 
         num_elites = int(self.popsize * self.elite_ratio)
         def foo(s):
-            p = utils.roulette_wheel(f=utils.tensor_to_numpy(fitness), s=s, normalize=True)
+            s = torch.tensor(s, dtype=torch.float32, device=self.device)
+            kwargs = dict(s=s, normalize=True, threshold=self.selection_threshold)
+            p = self.selection_method(f=fitness, **kwargs)
+            p = utils.tensor_to_numpy(p)
             elite_weight = (1 - self.elite_ratio)
             return np.abs(np.cumsum(sorted(p, reverse=True))[num_elites-1] - elite_weight)
 
-        result = minimize(foo, x0=self.selection_pressure, bounds=[(0.1, 30.)], tol=1e-3)
+        result = minimize(foo, x0=self.selection_pressure, bounds=[(0.01, 30.)], tol=1e-3)
         selection_pressure = result.x.item()
         return selection_pressure
 
     def selection(self):
-        """ Perform roulette_wheel selection step of current population data. """
+        """ Perform selection step of current population data. """
         x = self.solutions
         fitness = self.fitness
-
-        if "x" not in self.buffer:
-            # initialize buffer
-            self.buffer['x'] = x.clone()
-            self.buffer['fitness'] = fitness.clone()
-
-        else:
-            # update buffer
-            if self.buffer['x'].shape[0] >= self.buffer_size * self.popsize:
-                # remove nan values from buffer
-                is_nan = torch.isnan(self.buffer['fitness'])
-                num_nan = torch.sum(is_nan)
-                if num_nan:
-                    self.buffer['x'] = self.buffer['x'][~is_nan]
-                    self.buffer['fitness'] = self.buffer['fitness'][~is_nan]
-
-                # remove old samples from buffer with the lowest fitness
-                num_replace = self.popsize - num_nan
-                indices = self.buffer['fitness'].flatten().argsort()
-                self.buffer['x'] = self.buffer['x'][indices[num_replace:]]
-                self.buffer['fitness'] = self.buffer['fitness'][indices[num_replace:]]
-
-            # add new samples to tail of buffer
-            self.buffer['x'] = torch.cat((self.buffer['x'], x), dim=0)
-            self.buffer['fitness'] = torch.cat((self.buffer['fitness'], fitness), dim=0)
+        if x is not None:
+            self.buffer.push(x, fitness)
 
         # get buffer dataset
-        x_dataset = self.buffer['x'].clone()
+        x_dataset = self.buffer.x.clone()
 
-        # evaluate roulette wheel selection for buffer samples
-        f_dataset = self.buffer['fitness'].flatten()
+        # evaluate selection criteria for buffer samples
+        f_dataset = self.buffer.fitness.flatten()
 
         # check for nans (e.g. runaway parameters)
         if torch.isinf(f_dataset).any() or torch.isnan(f_dataset).any():
@@ -442,18 +485,17 @@ class HADES:
             f_dataset = f_dataset[~infty]
             x_dataset = x_dataset[~infty]
 
-        weights_dataset = utils.roulette_wheel(f=f_dataset, s=self.selection_pressure, normalize=True)
-        self.buffer['selection_probability'] = weights_dataset.clone().flatten()
+        weights_dataset = self.selection_method(f=f_dataset, **self.selection_kwargs)
         weights_dataset = weights_dataset.reshape(-1, 1)
+        self.buffer.info['selection_probability'] = weights_dataset.clone().flatten()
 
         if self.is_genetic_algorithm:
-            # select samples from buffer based on roulette wheel selection
-            selected_genotypes = torch.multinomial(weights_dataset.flatten(), len(x), replacement=True)
+            # select samples from buffer based on selection criteria
+            selected_genotypes = torch.multinomial(weights_dataset.flatten() / weights_dataset.sum(), len(x_dataset), replacement=True)
             x_dataset = x_dataset[selected_genotypes]
             weights_dataset = None  # disable weights for DM training
 
         else:
-            # renormalize weights to max. value of 1.
             weights_dataset = weights_dataset / weights_dataset.max()
 
         return x_dataset, weights_dataset
@@ -466,9 +508,43 @@ class HADES:
         if not self.diff_continuous_training:
             # reinitialize the diffusion model
             self.model.init_nn()
+            self.model = self.model.to(self.device)
 
         loss = self.model.fit(dataset, weights=weights, **self.diff_kwargs)
+        self.log()
         return loss
+
+    def log(self):
+        logger = self.model.logger
+        if logger is None:
+            return
+
+        try:
+            logger.log_scalar("Fitness/Best", self.fitness.max(), logger.generation)
+            logger.log_scalar("Fitness/Mean", self.fitness.mean(), logger.generation)
+            logger.log_scalar("Fitness/STD", self.fitness.std(), logger.generation)
+
+        except:
+            pass
+
+        try:
+            from ..stats import diversity
+            diversity = diversity(self.solutions)
+            logger.log_scalar("Diversity/Population", diversity, logger.generation)
+        except:
+            pass
+
+        fitness = self.buffer.fitness
+        logger.log_scalar("Buffer/Best", fitness.max(), logger.generation)
+        logger.log_scalar("Buffer/Mean", fitness.mean(), logger.generation)
+        logger.log_scalar("Buffer/STD", fitness.std(), logger.generation)
+
+        try:
+            from ..stats import diversity
+            diversity = diversity(self.buffer.x)
+            logger.log_scalar("Diversity/Buffer", diversity, logger.generation)
+        except:
+            pass
 
     @property
     def diff_kwargs(self):
@@ -479,30 +555,11 @@ class HADES:
                     weight_decay=self.diff_weight_decay,
                     batch_size=self.diff_batch_size)
 
-    def optimize(self,
-                 objective_function: callable,
-                 num_steps: int = 20,
-                 track_history: bool = True,
-                 temperature_range: tuple = (1.0, 0.5),
-                 ):
-
-        """ A wrapper to optimize the objective function. """
-
-        history = {"samples": [], "fitness": []}
-        temperatures = np.linspace(*temperature_range, num_steps)
-        for temperature in temperatures:
-            solutions = self.ask()
-            fitness = objective_function(solutions)
-            self.fitness_temperature = temperature
-            self.tell(fitness)
-            if track_history:
-                history["samples"].append(self.solutions.clone())
-                history["fitness"].append(self.fitness.clone())
-
-        if track_history:
-            return history
-
-        return self.solutions[0].clone(), self.fitness[0].clone()
+    @property
+    def selection_kwargs(self):
+        return dict(s=self.selection_pressure,
+                    normalize=True,
+                    threshold=self.selection_threshold)
 
     def result(self):
         """ return best params so far, along with historically best reward, curr reward, curr reward STD. """

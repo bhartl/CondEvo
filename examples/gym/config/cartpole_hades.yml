@@ -1,6 +1,6 @@
 experiment: Cartpole
 new_model: True
-timestamp: True
+timestamp: False
 experiment_config:
   agent: "FF"
   agent_kwargs:
@@ -9,20 +9,16 @@ experiment_config:
   world_kwargs:
     n_episodes: 8
     log_fields: []
-es: CHARLES
-conditions:
-  fitness_condition:                 # generate offspring conditional to fitness
-    scale: 500                       # normalize the fitness by this value
-    greedy: true                     # use greedy or Fisher-type sampling
+es: HADES
 generations: 100
 es_config:
   popsize: 128
   is_genetic_algorithm: False
-  selection_pressure: 8.0            # selection pressure for roulette wheel selection
-  adaptive_selection_pressure: True  # whether to adapt the selection pressure
+  selection_pressure: 18.0           # selection pressure for roulette wheel selection
+  adaptive_selection_pressure: False # whether to adapt the selection pressure
   elite_ratio: 0.25                  # ratio of the population to keep as elite. If crossover is used, an additional copy of the elite solutions might be added to the population if `improvement_steps` is defined.
   crossover_ratio: 0.45              # ratio of the population to perform crossover (if genetic algorithm, otherwise ignored)
-  mutation_rate: 0.05                # mutation rate after crossover and sampling
+  mutation_rate: 0.1                 # mutation rate after crossover and sampling
   unbiased_mutation_ratio: 0.25      # ratio of the population to perform unbiased mutation (if genetic algorithm, otherwise ignored)
   readaptation: False                # whether to use mutation adaptation (denoising steps) or not. Only valid for `HADES` and `CHARLES` evolutionary strategies.
   forget_best: False                 # whether to forget the best solution, or keep the elites for the next generation
@@ -40,9 +36,9 @@ diff: DDIM
 diff_config:
   num_steps: 1000
   noise_level: 0.05
-  diff_range: 100
+  diff_range: 10
   sample_uniform: False
-  autoscaling: False
+  autoscaling: True
 nn: MLP
 nn_config:
   num_hidden: 64

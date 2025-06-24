@@ -1,4 +1,6 @@
 experiment: LunarLanderContinuous
+new_model: True
+timestamp: True
 experiment_config:
   agent: "FF"
   agent_kwargs:
@@ -7,7 +9,6 @@ experiment_config:
   world_kwargs:
     n_episodes: 8
     log_fields: []
-    new_model: True
 es: HADES
 conditions: null
 generations: 100
@@ -29,11 +30,15 @@ es_config:
   diff_batch_size: 256               # DM: batch size for training the diffusion model
   diff_max_epoch: 200                # DM: number of training steps for the diffusion model at each generation
   diff_continuous_training: False    # DM: continuous training, or retrain diffusion model at each generation
-  buffer_size: 8
+  buffer_size:
+    max_size: 8
+    pop_type: quality  # diversity
 diff: DDIM
 diff_config:
   num_steps: 1000
   noise_level: 0.05
+  sample_uniform: False
+  autoscaling: False
 nn: MLP
 nn_config:
   num_hidden: 64

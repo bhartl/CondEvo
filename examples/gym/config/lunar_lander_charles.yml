@@ -1,4 +1,6 @@
 experiment: LunarLanderContinuous
+new_model: True
+timestamp: True
 experiment_config:
   agent: "FF"
   agent_kwargs:
@@ -7,7 +9,6 @@ experiment_config:
   world_kwargs:
     n_episodes: 8
     log_fields: []
-    new_model: True
 es: CHARLES
 conditions:
   fitness_condition:
@@ -21,7 +22,7 @@ es_config:
   adaptive_selection_pressure: True  # whether to adapt the selection pressure
   elite_ratio: 0.25                  # ratio of the population to keep as elite. If crossover is used, an additional copy of the elite solutions might be added to the population if `improvement_steps` is defined.
   crossover_ratio: 0.45              # ratio of the population to perform crossover (if genetic algorithm, otherwise ignored)
-  mutation_rate: 0.05                # mutation rate after crossover and sampling
+  mutation_rate: 0.5                 # mutation rate after crossover and sampling
   unbiased_mutation_ratio: 0.25      # ratio of the population to perform unbiased mutation (if genetic algorithm, otherwise ignored)
   readaptation: False                # whether to use mutation adaptation (denoising steps) or not. Only valid for `HADES` and `CHARLES` evolutionary strategies.
   forget_best: False                 # whether to forget the best solution, or keep the elites for the next generation
@@ -32,11 +33,16 @@ es_config:
   diff_batch_size: 256               # DM: batch size for training the diffusion model
   diff_max_epoch: 200                # DM: number of training steps for the diffusion model at each generation
   diff_continuous_training: False    # DM: continuous training, or retrain diffusion model at each generation
-  buffer_size: 8
+  buffer_size:
+    max_size: 8
+    pop_type: quality  # diversity
 diff: DDIM
 diff_config:
   num_steps: 1000
   noise_level: 0.05
+  diff_range: 10
+  sample_uniform: False
+  autoscaling: False
 nn: MLP
 nn_config:
   num_hidden: 64

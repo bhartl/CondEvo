@@ -1,0 +1,60 @@
+experiment: MountainCar
+experiment_config:
+  agent: "RGRN"
+  agent_kwargs:
+    num_hidden: 4
+    num_layers: 1
+    parameter_scale: 10.0
+  world_kwargs:
+    n_episodes: 5
+    log_fields: ["reward", "done", "observation"]
+    new_model: True
+#    max_steps: 10
+es: CHARLES
+conditions:
+  position_condition:
+    target: 0.5
+    horizon: 1
+    agg: max
+#  fitness_condition:
+#    scale: 200
+#    greedy: true
+#  knn_novelty_condition:
+#    k: 32
+#    weight_by_fitness: false
+generations: 100
+es_config:
+  popsize: 10
+  sigma_init: 0.2
+  is_genetic_algorithm: False
+  selection_pressure: 8.0            # selection pressure for roulette wheel selection
+  adaptive_selection_pressure: False # whether to adapt the selection pressure
+  elite_ratio: 0.1                   # ratio of the population to keep as elite. If crossover is used, an additional copy of the elite solutions might be added to the population if `improvement_steps` is defined.
+  crossover_ratio: 0.0               # ratio of the population to perform crossover (if genetic algorithm, otherwise ignored)
+  mutation_rate: 0.05                # mutation rate after crossover and sampling
+  unbiased_mutation_ratio: 0.25      # ratio of the population to perform unbiased mutation (if genetic algorithm, otherwise ignored)
+  readaptation: False                # whether to use mutation adaptation (denoising steps) or not. Only valid for `HADES` and `CHARLES` evolutionary strategies.
+  forget_best: True                  # whether to forget the best solution, or keep the elites for the next generation
+  # weight_decay: 0.001              # L2 weight decay for the parameters of the evolutionary strategy (NOT of the diffusion model)
+  diff_optim: "Adam"                 # DM: optimizer for training the diffusion model
+  diff_lr: 0.003                     # DM: learning rate for training the diffusion model
+  diff_weight_decay: 0.000001        # DM: weight decay for training the diffusion model
+  diff_batch_size: 256               # DM: batch size for training the diffusion model
+  diff_max_epoch: 500                # DM: number of training steps for the diffusion model at each generation
+  diff_continuous_training: False    # DM: continuous training, or retrain diffusion model at each generation
+  buffer_size: 3
+diff: DDIM
+diff_config:
+  num_steps: 1000
+  noise_level: 0.1
+  diff_range: 5
+  sample_uniform: False
+  autoscaling: False
+  matthew_factor: 0.8
+nn: MLP
+nn_config:
+  num_hidden: 196
+  num_layers: 3
+  activation: ELU
+  # batch_norm: True
+  # dropout: 0.1

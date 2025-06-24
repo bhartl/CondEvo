@@ -104,6 +104,9 @@ def train(experiment: str ="Cartpole",
     agent_filename = experiment.get_agent_filename(diff_instance=diff_instance, es=es_name, timestamp=timestamp)
     os.makedirs(agent_path, exist_ok=True)
 
+    # initialize tensorboard
+    diff_instance.log_dir = os.path.join(agent_path, "runs/run1")  # , ".".join(agent_filename.split(".")[:-1]))
+
     from mindcraft.script import train as train_mindcraft
     world = experiment.get_world()
 
@@ -256,7 +259,6 @@ def run(config, method="train", timestamp=None):
     if config["es"] not in ("HADES", "CHARLES"):
         print(f"Assuming diff {config['es']}")
         config["diff"] = config["es"]
-        config["es"] = "mindcraft"
 
     return method(**config)
 

@@ -36,7 +36,10 @@ def load_nn(nn_cls, config, num_params, num_conditions=0):
     config = {**default_config, **config}
 
     if "num_params" not in config:
-        config["num_params"] = num_params + num_conditions
+        config["num_params"] = num_params
+
+    if num_conditions and "num_conditions" not in config:
+        config["num_conditions"] = num_conditions
 
     # load nn
     if isinstance(nn_cls, str):
@@ -108,6 +111,7 @@ def load_es(es_cls, config, diffuser, num_params):
     # inspect `es_cls` constructor whether "model" is a parameter
     try:
         es_instance = es_cls(num_params=num_params, model=diffuser, **config)
+        config["model"] = diffuser
     except TypeError:
         es_instance = es_cls(num_params=num_params, **config)
 

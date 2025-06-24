@@ -15,7 +15,7 @@ experiment_config:
     query_size: 24
     context_size: 16
     num_heads: 4
-    hidden_size: 24 
+    hidden_size: 24
   world_kwargs:
     n_episodes: 8
     log_fields: ["reward", "done", "observation"]
@@ -26,7 +26,7 @@ conditions:
     greedy: true                     # use greedy or Fisher-type sampling
 generations: 1000
 es_config:
-  popsize: 128
+  popsize: 256
   is_genetic_algorithm: False
   selection_pressure: 18.0           # selection pressure for roulette wheel selection
   adaptive_selection_pressure: False # whether to adapt the selection pressure
@@ -52,7 +52,7 @@ diff_config:
   param_range: 10
 nn: MLP
 nn_config:
-  num_hidden: 256
+  num_hidden: 128
   num_layers: 2
   activation: ELU
   batch_norm: True

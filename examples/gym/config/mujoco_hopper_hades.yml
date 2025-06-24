@@ -45,11 +45,12 @@ es_config:
 diff: DDIM
 diff_config:
   num_steps: 1000
+  alpha_schedule: cosine
   noise_level: 0.05
   param_range: 10
 nn: MLP
 nn_config:
-  num_hidden: 256
-  num_layers: 3 
-  activation: ELU
+  num_hidden: 64
+  num_layers: 2
+  activation: ReLU
   batch_norm: True

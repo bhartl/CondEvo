@@ -15,7 +15,10 @@ pip install -e .
 ### Example Dependencies
 To install dependencies for the examples, you might first install the code depends on the following packages:
 - `foobench` (see [install instructions](https://github.com/bhartl/foobench) on GitHub)
-- `mincraft` [**WE ARE CURRENTLY RESOLVING LICENSING ISSUES TO THIS END**]
+- `mincraft` (see [install instructions](https://github.com/bhartl/NeurEvo) on GitHub)
+
+Then, you may install the examples dependencies via
+```bash
 
 and then install the examples dependencies package via
 ```bash

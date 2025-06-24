@@ -91,7 +91,7 @@ class HADES:
         :param unbiased_mutation_ratio: float, ratio of the population that is mutated without applying the diffusion,
                                         while no mutations with diffusion are applied to any subset of the population.
                                         If this value is non-zero, a total of `popsize * unbiased_mutation_ratio`
-                                        individuals are mutated, where for each individual, `num_parameters * mutation_rate`
+                                        individuals are mutated, where for each individual, `model.num_steps * mutation_rate`
                                         genes are mutated by Gaussian noise of scale `sigma_init`.
                                         This option is compatible with `readaptation`.
         :param random_mutation_ratio: float, ratio of the population that is mutated by adding random noise over

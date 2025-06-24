@@ -5,7 +5,7 @@ from condevo.diffusion import DM
 class RectFlow(DM):
     """ Rectified Flow model for condevo package. """
 
-    def __init__(self, nn, num_steps=100, param_range=None, lambda_range=0.):
+    def __init__(self, nn, num_steps=100, param_range=None, lambda_range=0., sigma_zero=1.0):
         """ Initialize the RectFlow model
 
         :param nn: torch.nn.Module, Neural network to be used for the diffusion model.
@@ -13,13 +13,13 @@ class RectFlow(DM):
         :param param_range: float, Parameter range for generated samples of the diffusion model. Defaults to None.
         :param lambda_range: float, Magnitude of loss if denoised parameters exceed parameter range. Defaults to 0.
         """
-        super(RectFlow, self).__init__(nn=nn, num_steps=num_steps, param_range=param_range, lambda_range=lambda_range)
+        super(RectFlow, self).__init__(nn=nn, num_steps=num_steps, param_range=param_range, lambda_range=lambda_range, sigma_zero=sigma_zero)
 
     def interpolate(self, x1, t):
         # Note: different from DDPM or DDIM, x1~data, and x0~noise
-        x0 = randn_like(x1)
+        x0 = randn_like(x1) * self.sigma_zero
         xt = t * x1 + (1 - t) * x0
-        return x0, xt
+        return xt, x0
 
     def diffuse(self, x, t):
         """ Diffuse the input tensor `x` at time `t`, functionally equivalent to `self.interpolate(x, t)`
@@ -41,7 +41,7 @@ class RectFlow(DM):
     def eval_val_pred(self, x, *conditions):
         """ Evaluate the actual error value and error prediction of the model """
         t = rand(x.shape[0], 1)
-        x0, xt = self.interpolate(x, t)
+        xt, x0 = self.diffuse(x, t)
         v_pred = self(xt, t, *conditions)
         v = x - x0
         return v, v_pred

@@ -52,12 +52,16 @@ class DDIM(DM):
         Args:
             x0 (torch.tensor): Input tensor to be diffused.
             t (torch.tensor): Time step for the diffusion process, ranging from 0 to 1.
+
+        Returns:
+            tuple: Diffused tensor `xt` and the totoal noise `eps`.
+                   In case of `self.predict_eps_t`, the returned noise is the actual noise `eps_t` at time `t`.
         """
         eps = randn_like(x0, device=x0.device)
         if isinstance(t, float):
             t = tensor(t)
         T = (t * (self.num_steps - 1)).long().cpu()
-        eps_t = (1 - self.alpha[T].to(x0.device)).sqrt() * eps 
+        eps_t = (1 - self.alpha[T].to(x0.device)).sqrt() * eps
         xt = self.alpha[T].to(x0.device).sqrt() * x0 + eps_t
         if self.predict_eps_t:
             eps_t = xt - x0

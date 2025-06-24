@@ -24,6 +24,10 @@ class DM(Module):
         else:
             raise NotImplementedError("Model does not have a `_build_model` method.")
 
+    def diffuse(self, x0, t):
+        """ Abstract diffuse method the input tensor `x` at time `t` """
+        raise NotImplementedError("Diffusion method not implemented, should be implemented in subclass.")
+
     def forward(self, x, t, *conditions):
         """Predict the noise `eps` with given `x` and `t`, `t` [0,1] represents the diffusion time step,
            where `t==0` is the data state (denoised) and `t==1` is the fully noisy state. """
@@ -55,12 +59,38 @@ class DM(Module):
 
         if (x_source is None) and (num is not None):
             x_source = randn(num, *shape)
-        
+
         if conditions is None:
             conditions = tuple()
 
         sample_vectorized = vmap(self.sample_point, randomness='different')
         x_sampled = sample_vectorized(x_source, *conditions, t_start=t_start)
+
+        # check for valid parameter range
+        exceeding_x = self.exceeds_param_range(x_sampled) > 0
+        exceeding_count = 0
+        while exceeding_x.any():
+            # new sample points
+            exceeding_x_source = randn(int(sum(exceeding_x)), *shape) * self.sigma_zero
+
+            if exceeding_count > 10:
+                # clamp to param_range
+                exceeding_x_source = exceeding_x_source.clamp(-self.param_range, self.param_range)
+                x_sampled[exceeding_x] = exceeding_x_source
+                break
+
+            else:
+                exceeding_conditions = [condition[exceeding_x] for condition in conditions]
+                x_resampled = sample_vectorized(exceeding_x_source, *exceeding_conditions)
+
+                # check for valid parameter range and integrate into samples
+                exceeding_resampled =  self.exceeds_param_range(x_resampled) > 0
+                valid_resampled = torch.where(exceeding_x)[0][~exceeding_resampled]
+                x_sampled[valid_resampled] = x_resampled[~exceeding_resampled]
+
+            exceeding_x = self.exceeds_param_range(x_sampled) > 0
+            exceeding_count += 1
+
         return x_sampled
 
     def eval_val_pred(self, x, *conditions):
@@ -90,7 +120,28 @@ class DM(Module):
             return zeros_like(x[:, 0])
         
         # evaluate the exceed of the parameter range (via ReLU)
-        return ReLU()((x ** 2).sum(dim=-1) - self.param_range ** 2)
+        return ReLU()(x ** 2 - self.param_range ** 2).mean(dim=-1)
+
+    def update_sigma_zero(self, x, weights=None):
+        """ Update the sigma_zero parameter based on STD of diffused input data `x`. """
+
+        # diffuse data fully, to get range of parameter variability
+        xt, _ = self.diffuse(x=x, t=torch.zeros(1)[0])
+
+        if weights is not None:
+            # evaluate weighted STD based on weights
+            w = weights / weights.sum()
+            mean = (w * xt).sum(dim=0)
+            std_x = (w * (xt - mean)**2).sum(dim=0)
+        else:
+            # evaluate STD based on data
+            std_x = xt.std(dim=0)
+
+        self.sigma_zero = max([1., std_x.mean()])
+        if self.param_range:
+            self.sigma_zero = min(self.sigma_zero, self.param_range)
+
+        return self.sigma_zero
 
     def fit(self, x, *conditions, weights=None, optimizer: Union[str, type] = optim.Adam, max_epoch=100, lr=1e-3,
             weight_decay=1e-5, batch_size=32, scheduler=None):

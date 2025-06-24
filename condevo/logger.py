@@ -50,7 +50,7 @@ class TensorboardLogger:
     #         self.log_scalar(k, v, step)
 
     def log_scalar(self, tag, value, step):
-        if not self.log_dir:
+        if not self.log_dir or not self.writer:
             return
 
         self.writer.add_scalar(tag + f"_{self.run}", value, step)

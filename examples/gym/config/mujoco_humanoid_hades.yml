@@ -1,33 +1,28 @@
-experiment: MujocoHopper
+experiment: MujocoAnt
 timestamp: True
 new_model: True
 experiment_config:
-  agent: "RGRN"  # "GRU"  # "RGRN"  # "LSTM"  # "RNN"
-  agent_kwargs:
-    num_hidden: 16
-    num_layers: 1
-#  agent: "QKV"
+#  agent: "GRU"
 #  agent_kwargs:
-#    action_foldback: True
-#    pos_embedding: False
-#    projection_size: 8
-#    embedding_size: 4
-#    query_size: 8
-#    context_size: 6
-#    num_heads: 2
-#    hidden_size: 16
+#    num_hidden: 16
+#    num_layers: 1
+  agent: "QKV"
+  agent_kwargs:
+    action_foldback: True
+    pos_embedding: False
+    projection_size: 8
+    embedding_size: 6
+    query_size: 16
+    context_size: 8
+    num_heads: 4
+    hidden_size: 32
   world_kwargs:
-    n_episodes: 4
+    n_episodes: 8
     log_fields: ["reward", "done", "observation"]
-#  max_steps: 500
-es: CHARLES
-conditions:
-  fitness_condition:
-    scale: 500
-    greedy: true
-generations: 500
+es: HADES
+generations: 2000
 es_config:
-  popsize: 128
+  popsize: 256
   is_genetic_algorithm: False
   selection_pressure: 18.0           # selection pressure for roulette wheel selection
   adaptive_selection_pressure: False # whether to adapt the selection pressure

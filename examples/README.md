@@ -5,4 +5,9 @@ This directory contains examples from our [paper](https://arxiv.org/abs/2411.134
 See various examples from our [paper](https://arxiv.org/abs/2411.13420) as jupyter notebooks in the [examples/conditional](conditional) directory.
 
 ### Gym Reinforcement Learning Examples
-See reinforcement learning examples in the [examples/gym](gym) directory [**WE ARE CURRENTLY RESOLVING LICENSING ISSUES TO THIS END**].
+See reinforcement learning examples in the [examples/gym](gym) directory.
+
+### Custom Evolutionary Tasks
+See the [examples/evolution](evolution) directory for custom evolutionary tasks.
+
+For instance in [examples/evolution/nd_targets.py](evolution/nd_targets.py), we search for multiple solution points in an N-dimensional space using different variants of the HADES algorithm.

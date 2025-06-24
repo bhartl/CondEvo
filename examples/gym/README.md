@@ -1,20 +1,10 @@
 # Reinforcement Learning Examples
 ## Installation
-Requires the `foobench` and `mindcraft` packages. Please refer to the 
-[foobench README](https://github.com/bhartl/foobench/) 
-and [mindcraft README](https://github.com/bhartl/NeurEvo/?tab=readme-ov-file#install) for installation instructions.
-
-Otherwise, install the `[conditional]` and `[gym]` dependencies of the `condevo` package in developer mode (`../..` refers to the root directory of the repository):
-```bash
-pip install -e ../..[conditional]
-# pip install -e ../..[gym]  # WE ARE CURRENTLY RESOLVING LICENSING ISSUES TO THIS END
-```
+Requires the `mindcraft` packages. Please refer to the [mindcraft README](https://github.com/bhartl/NeurEvo/?tab=readme-ov-file#install) for installation instructions.
 
 ## Examples
 ### Classic Control Tasks in Gym
-Via `mindcraft`, we provide APIs to some [classic control tasks](https://www.gymlibrary.dev/environments/classic_control/), such as 
-[Acrobot](experiments/local/acrobot.py) and 
-[CartPole](experiments/cartpole.py) 
+Via `mindcraft`, we provide APIs to some [classic control tasks](https://www.gymlibrary.dev/environments/classic_control/), such as [CartPole](experiments/cartpole.py)  or [MountanCar](experiments/mountain_car.py).
 
 ### Box2D Tasks in Gym
 Via `mindcraft`, we provide APIs to some [Box2D tasks](https://www.gymlibrary.dev/environments/box2d/) such as

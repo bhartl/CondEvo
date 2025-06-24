@@ -43,6 +43,7 @@ If you use this code in your research, please cite the following paper:
       archivePrefix={arXiv},
       primaryClass={cs.NE},
       url={https://arxiv.org/abs/2411.13420}, 
+      note = {Code available at \url{https://github.com/bhartl/condevo}},
 }
 ```
 

@@ -4,6 +4,7 @@ import numpy as np
 from scipy.optimize import minimize
 from ..diffusion import DM, DDIM, RectFlow, get_default_model
 from ..es import utils
+from ..es import selection
 from .data import DataBuffer
 from typing import Optional, Union
 
@@ -71,9 +72,9 @@ class HADES:
                                      for training the DM via roulette wheel selection of the solution's fitness.
                                      In the case of the algorithm being used as evolutionary, the solution are weighted by
                                      their fitness when training the diffusion model.
-        :param selection_method: str, selection method to use for the selection of the solutions, defaults to `utils.roulette_wheel`.
+        :param selection_method: str, selection method to use for the selection of the solutions, defaults to `selection.roulette_wheel`.
                                  Needs to take arguments `f` (fitness values), `s` (selection pressure), `normalize` (bool), `threshold` (float [0, 1]).
-        :param selection_pressure: float, selection pressure for the selected fitness transformation (defaults to `utils.roulette_wheel`)
+        :param selection_pressure: float, selection pressure for the selected fitness transformation (defaults to `selection.roulette_wheel`)
         :param adaptive_selection_pressure: bool, whether to adapt the selection pressure, so the elite solutions
                                             have a probability of (1-elite_ratio) to be selected. If False, the
                                             selection pressure is fixed, otherwise the selection pressure is the
@@ -126,7 +127,7 @@ class HADES:
         assert x0.shape == (self.num_params,), x0.shape
         self.x0 = x0
 
-        self.selection_method = getattr(utils, selection_method) if isinstance(selection_method, str) else selection_method
+        self.selection_method = getattr(selection, selection_method) if isinstance(selection_method, str) else selection_method
         self.selection_pressure = selection_pressure  # selection_pressure initial value
         self.selection_threshold = selection_threshold
         self.adaptive_selection_pressure = adaptive_selection_pressure
@@ -350,7 +351,7 @@ class HADES:
 
     def get_crossover(self, num_crossover, *conditions):
         # get probability for selection
-        p = self.selection_method(self.elite_fitness, normalize=True, **self.selection_kwargs)
+        p = self.selection_method(self.elite_fitness, **self.selection_kwargs)
 
         # sample crossover solutions
         xt_crossover = []
@@ -454,7 +455,10 @@ class HADES:
 
         num_elites = int(self.popsize * self.elite_ratio)
         def foo(s):
-            p = self.selection_method(f=utils.tensor_to_numpy(fitness), s=s, normalize=True, threshold=self.selection_threshold)
+            s = torch.tensor(s, dtype=torch.float32, device=self.device)
+            kwargs = dict(s=s, normalize=True, threshold=self.selection_threshold)
+            p = self.selection_method(f=fitness, **kwargs)
+            p = utils.tensor_to_numpy(p)
             elite_weight = (1 - self.elite_ratio)
             return np.abs(np.cumsum(sorted(p, reverse=True))[num_elites-1] - elite_weight)
 
@@ -481,7 +485,7 @@ class HADES:
             f_dataset = f_dataset[~infty]
             x_dataset = x_dataset[~infty]
 
-        weights_dataset = self.selection_method(f=f_dataset, normalize=False, **self.selection_kwargs)
+        weights_dataset = self.selection_method(f=f_dataset, **self.selection_kwargs)
         weights_dataset = weights_dataset.reshape(-1, 1)
         self.buffer.info['selection_probability'] = weights_dataset.clone().flatten()
 
@@ -554,6 +558,7 @@ class HADES:
     @property
     def selection_kwargs(self):
         return dict(s=self.selection_pressure,
+                    normalize=True,
                     threshold=self.selection_threshold)
 
     def result(self):

@@ -54,7 +54,7 @@ class HADES:
                  eps: float = 1e-12,
                  buffer_size: Optional[Union[int, dict, DataBuffer]] = 4,
                  training_interval: int = 1,
-                 device: Optional[torch.device] = 'cpu'
+                 device: Optional[Union[torch.device, str]] = 'cpu'
                  ):
         """ Constructs a SHADES optimizer.
 
@@ -123,7 +123,7 @@ class HADES:
 
         self.sigma_init = sigma_init
         if x0 is None:
-            x0 = zeros(self.num_params)
+            x0 = zeros(self.num_params, device=self.device)
         assert x0.shape == (self.num_params,), x0.shape
         self.x0 = x0
 
@@ -253,7 +253,7 @@ class HADES:
         # update population with new samples
         if self.is_initial_population:
             # initial population
-            samples = randn(self.popsize, self.num_params)
+            samples = randn(self.popsize, self.num_params, device=self.device)
             self.solutions = samples * self.sigma_init + self.x0
 
         else:
@@ -416,7 +416,7 @@ class HADES:
 
         for _ in range(int(self.readaptation)):
             # refine the diffused/mutated samples by applying denoising for a few steps
-            adaptive_diff_steps = int(np.rint(t_diffuse * (self.model.num_steps - 1)))  # be careful about T max
+            adaptive_diff_steps = int(np.rint(utils.tensor_to_numpy(t_diffuse) * (self.model.num_steps - 1)))  # be careful about T max
             samples = self.model.sample(x_source=samples, shape=(self.num_params,),
                                         t_start=adaptive_diff_steps, conditions=conditions,
                                         **self.diff_sample_kwargs)
@@ -426,7 +426,7 @@ class HADES:
             random_indices = torch.rand(samples.shape[0]) < self.random_mutation_ratio
             for i in torch.where(random_indices)[0]:
                 std = torch.maximum(self.model.param_std.flatten(), tensor(self.sigma_init, dtype=samples.dtype, device=samples.device))
-                random_noise = (rand(self.num_params) - 0.5) * std * 3.
+                random_noise = (rand(self.num_params, device=self.device) - 0.5) * std * 3.
                 samples[i, :] += random_noise
 
             # clip the samples to the parameter range according to the diff_range policy of the DM

@@ -42,7 +42,7 @@ class CHARLES(HADES):
                  to_numpy: bool = False,
                  buffer_size: int = 4,
                  training_interval: int = 1,
-                 device="cpu"
+                 device: Optional[Union[torch.device, str]]="cpu"
                  ):
         """ Constructs a CHARLES-Diffusion optimizer.
 
@@ -148,7 +148,7 @@ class CHARLES(HADES):
         # update population with new samples
         if self.is_initial_population:
             # initial population
-            samples = randn(self.popsize, self.num_params)
+            samples = randn(self.popsize, self.num_params, device=self.device)
             self.solutions = samples * self.sigma_init + self.x0
 
         else:

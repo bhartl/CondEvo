@@ -1,4 +1,4 @@
-from torch import rand, randn_like, arange, linspace
+from torch import rand, randn_like, arange, tensor, Tensor
 from ..diffusion import DM
 
 
@@ -46,22 +46,29 @@ class RectFlow(DM):
         but same naming as in DDIM and DDPM. """
         return self.interpolate(x, t)
 
+    def get_diffusion_time(self, noise_level, device=None):
+        """ Get the diffusion steps for a given noise ratio."""
+        if isinstance(noise_level, Tensor):
+            return (1 - noise_level)
+        else:
+            return tensor(1 - noise_level, device=device or self.nn.device)
+
     def sample_point(self, xt, *conditions, t_start=None):
         # Solving the ODE dx/dt = v(x, t) with Euler method
         if t_start is None:
             t_start = 0
 
         xt = xt.unsqueeze(0)
-        rx = randn_like(xt, device=self.device) * linspace(1, 0, self.num_steps, device=self.device).reshape(-1, 1, 1)
         conditions = tuple(c.unsqueeze(0) for c in conditions)
         tt = arange(0, self.num_steps, 1, device=self.device).reshape(-1, 1, 1) / self.num_steps  # add (batch, 1) to t
         dt = 1. / self.num_steps * self.matthew_factor
-        noiset = (dt**0.5) * rx * self.noise_level
 
         for T in range(t_start, self.num_steps):
             t = tt[T]
             v = self(xt, t, *conditions)
-            xt = xt + v * dt + noiset[T]
+            xt = xt + v * dt
+            if self.noise_level:
+                xt += (dt ** 0.5) * randn_like(xt) * self.noise_level * (1 - t)
 
         return xt.squeeze(0)
 

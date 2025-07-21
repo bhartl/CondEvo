@@ -54,7 +54,8 @@ class HADES:
                  eps: float = 1e-12,
                  buffer_size: Optional[Union[int, dict, DataBuffer]] = 4,
                  training_interval: int = 1,
-                 device: Optional[Union[torch.device, str]] = 'cpu'
+                 device: Optional[Union[torch.device, str]] = 'cpu',
+                 model_path: Optional[str] = None
                  ):
         """ Constructs a SHADES optimizer.
 
@@ -113,6 +114,7 @@ class HADES:
         :param buffer_size: int, size of the buffer to store the solutions, fitness and probabilities for training the diffusion model.
         :param training_interval: int, number of sampled generations between retraining the diffusion model.
         :param device: torch.device, device to use for the diffusion model and the solutions.
+        :param model_path: str, path to the diffusion model to save and load. If None, the model is initialized from scratch.
         """
 
         self.device = device
@@ -171,8 +173,11 @@ class HADES:
         self._buffer = None
         self.buffer = buffer_size
 
+        self.model_path = model_path
+
         self.training_interval = training_interval
         self._asked = 0
+        self.loss = 0
 
     @property
     def buffer(self):
@@ -239,6 +244,31 @@ class HADES:
     def is_initial_population(self):
         return self.solutions is None
 
+    def load_model(self, path=None):
+        path = path or self.model_path
+        self.model.init_nn()
+
+        import os
+        if os.path.exists(path):
+            self.model.load_state_dict(torch.load(path, map_location=self.device))
+            self.model.nn.eval()
+            self.model.eval()
+
+        return self.model
+
+    def save_model(self, path=None):
+        path = path or self.model_path
+        if path is None:
+            return
+
+        # new directory if not exists
+        import os
+        dir_name = os.path.dirname(path)
+        if dir_name and not os.path.exists(dir_name):
+            os.makedirs(dir_name)
+
+        torch.save(self.model.state_dict(), path)
+
     def ask(self):
         """ Sample solutions from the diffusion model.
 
@@ -255,6 +285,14 @@ class HADES:
             # initial population
             samples = randn(self.popsize, self.num_params, device=self.device)
             self.solutions = samples * self.sigma_init + self.x0
+
+            if self.model_path not in (None, ""):
+                self.load_model()
+                # sample from the diffusion model, either completely if no x0 is given, or only denoise x0 slightly
+                diff = 1 if (self.x0 == 0.0).all() else self.mutation_rate
+                t_start = self.model.get_diffusion_time(diff) * (self.model.num_steps - 1)
+                self.solutions[:] = self.model.sample(x_source=samples, shape=(self.num_params,),
+                                                      t_start=t_start, **self.diff_sample_kwargs)
 
         else:
             if self.num_elite < self.popsize:
@@ -300,8 +338,11 @@ class HADES:
             self.best_fitness = self.fitness[0].clone()
             self.best_solution = self.solutions[0].clone()
 
+            if self.model_path not in (None, ""):
+                self.save_model(self.model_path)
+
         parent_dataset, survival_weights = self.selection()
-        if not self._asked % self.training_interval:
+        if not (self._asked + 1) % self.training_interval:
             self.loss = self.train_model(dataset=parent_dataset, weights=survival_weights)
 
             # import matplotlib.pyplot as plt
@@ -402,7 +443,7 @@ class HADES:
         if self.mutation_rate is None or self.is_initial_population:
             return samples
 
-        t_diffuse = tensor(self.mutation_rate, device=samples.device)
+        t_diffuse = self.model.get_diffusion_time(self.mutation_rate, device=self.device)
         if not self.unbiased_mutation_ratio:
             # "Mutate" crossover samples by adding noise (applying diffusion for a few steps)
             # -> would be interesting to find number of steps based on points of
@@ -425,7 +466,11 @@ class HADES:
             # add random Gaussian noise to the samples
             random_indices = torch.rand(samples.shape[0]) < self.random_mutation_ratio
             for i in torch.where(random_indices)[0]:
-                std = torch.maximum(self.model.param_std.flatten(), tensor(self.sigma_init, dtype=samples.dtype, device=samples.device))
+                try:
+                    std = torch.maximum(self.model.param_std.flatten(), tensor(self.sigma_init, dtype=samples.dtype, device=samples.device))
+                except AttributeError:
+                    std = tensor(max([self.model.param_std, self.sigma_init]), dtype=samples.dtype, device=samples.device)
+
                 random_noise = (rand(self.num_params, device=self.device) - 0.5) * std * 3.
                 samples[i, :] += random_noise
 

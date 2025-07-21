@@ -128,8 +128,9 @@ def plot_2d(x, f, targets=None):
     plt.show()
 
 
-def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
-          is_genetic=False, diffuser="DDIM", tensorboard=False, sharpen_sampling=10,
+def hades(generations=20, popsize=512, autoscaling=True, sample_uniform=True,
+          is_genetic=False, diffuser="DDIM", tensorboard=False, sharpen_sampling=25,
+          reload=False,
           ):
     # define the fitness function
     targets = [[0.1, 4.0, -3.0],
@@ -172,9 +173,9 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
                         diff_range=10.0,
                         # predict_eps_t=True,
                         log_dir="data/logs/hades" * tensorboard,
-                        normalize_steps=False,
+                        normalize_steps=True,
+                        predict_eps_t=False,
                         )
-
     else:
         # define the fect flow
         diffuser = RectFlow(nn=mlp,
@@ -182,7 +183,7 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
                             noise_level=0.5,
                             autoscaling=autoscaling,
                             sample_uniform=sample_uniform,
-                            matthew_factor=np.sqrt(0.5),
+                            matthew_factor=1,#np.sqrt(0.5),
                             diff_range=10.0,
                             log_dir="data/logs/hades_RF" * tensorboard,
                             )
@@ -209,7 +210,7 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
                    unbiased_mutation_ratio=0.1,
                    readaptation=True,
                    ###########################################
-                   random_mutation_ratio=0.0625,
+                   random_mutation_ratio=0.125,
                    crossover_ratio=0.0,
                    forget_best=True,
                    diff_lr=0.003,
@@ -218,7 +219,9 @@ def hades(generations=15, popsize=512, autoscaling=True, sample_uniform=True,
                    diff_batch_size=256,
                    diff_weight_decay=1e-6,
                    buffer_size=0,  # don't restrict buffer size
-                   diff_continuous_training=False,
+                   diff_continuous_training=reload,
+                   model_path="data/models/hades.pt" * reload,
+                   training_interval=10,
                    )
 
     # evolutionary loop

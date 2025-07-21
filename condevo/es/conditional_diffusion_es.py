@@ -42,7 +42,8 @@ class CHARLES(HADES):
                  to_numpy: bool = False,
                  buffer_size: int = 4,
                  training_interval: int = 1,
-                 device: Optional[Union[torch.device, str]]="cpu"
+                 device: Optional[Union[torch.device, str]]="cpu",
+                 model_path: Optional[str] = None,
                  ):
         """ Constructs a CHARLES-Diffusion optimizer.
 
@@ -94,6 +95,8 @@ class CHARLES(HADES):
         :param buffer_size: int, size of the buffer to store the solutions and conditions for training the diffusion
                             model.
         :param training_interval: int, number of generations between training the diffusion model
+        :param device: torch.device or str, device to use for the diffusion model and the population
+        :param model_path: str, path to the diffusion model checkpoint. If None, the default model is used.
         """
 
         if model is None or isinstance(model, str):
@@ -132,6 +135,7 @@ class CHARLES(HADES):
                          buffer_size=buffer_size,
                          training_interval=training_interval,
                          device=device,
+                         model_path=model_path,
                          )
 
     def ask(self):
@@ -150,6 +154,20 @@ class CHARLES(HADES):
             # initial population
             samples = randn(self.popsize, self.num_params, device=self.device)
             self.solutions = samples * self.sigma_init + self.x0
+
+            if self.model_path not in (None, ""):
+                self.load_model()
+                # sample from the diffusion model, either completely if no x0 is given, or only denoise x0 slightly
+                diff = 1 if (self.x0 == 0.0).all() else self.mutation_rate
+                t_start = self.model.get_diffusion_time(diff) * (self.model.num_steps - 1)
+                try:
+                    conditions = self.sample_conditions(self.popsize)
+                except:
+                    conditions = [c.view(-1, 1) for c in randn(self.model.num_conditions, self.popsize, device=self.device)]
+
+                self.solutions[:] = self.model.sample(x_source=samples, shape=(self.num_params,), conditions=conditions,
+                                                      t_start=t_start, **self.diff_sample_kwargs)
+
 
         else:
             conditions = self.sample_conditions(self.popsize)

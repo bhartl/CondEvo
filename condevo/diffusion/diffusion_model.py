@@ -11,7 +11,8 @@ class DM(Module):
     """ Diffusion Model base-class for condevo package. """
 
     def __init__(self, nn, num_steps=100, diff_range=None, lambda_range=0., param_mean=0.0, param_std=1.0,
-                 epsilon=1e-8, log_dir="", sample_uniform=False, autoscaling=False, diff_range_filter=True,
+                 epsilon=1e-8, log_dir="",
+                 sample_uniform=False, autoscaling=False, diff_range_filter=True,
                  clip_gradients=None):
         """ Initialize the Diffusion Model
 
@@ -68,6 +69,13 @@ class DM(Module):
     def diffuse(self, x0, t):
         """ Abstract diffuse method the input tensor `x` at time `t` """
         raise NotImplementedError("Diffusion method not implemented, should be implemented in subclass.")
+
+    def get_diffusion_time(self, noise_level, device=None):
+        """ Get the diffusion time (ratio of denoising steps towards solution) for a given noise ratio. """
+        if isinstance(noise_level, Tensor):
+            return noise_level
+        else:
+            return torch.tensor(noise_level, device=device or self.device, dtype=torch.long)
 
     @property
     def num_conditions(self):

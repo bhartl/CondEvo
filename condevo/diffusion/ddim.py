@@ -68,7 +68,7 @@ class DDIM(DM):
         a = cat([tensor([1], device=self.device), self.alpha])
         self.sigma = (1 - a[:-1]) / (1 - a[1:]) * (1 - a[1:] / a[:-1])
         self.sigma = sqrt(self.sigma)
-    
+
     def forward(self, xt, t, *conditions):
         r"""Predicting the noise `eps` with given `xt` and `t`, where
         `xt` is x0 after diffusion and `t` is the time step. `t` is the
@@ -86,7 +86,7 @@ class DDIM(DM):
 
     def diffuse(self, x, t):
         """Diffuse the input tensor `x` with noise at time `t`
-        
+
         Args:
             x (torch.tensor): Input tensor to be diffused.
             t (torch.tensor): Time step for the diffusion process, ranging from 0 to 1.
@@ -103,10 +103,10 @@ class DDIM(DM):
         if isinstance(t, float):
             t = tensor(t)
         T = (t * (self.num_steps - 1)).long()
-        eps_t = (1 - self.alpha[T]).sqrt() * eps 
+        eps_t = (1 - self.alpha[T]).sqrt() * eps
         xt = self.alpha[T].sqrt() * x + eps_t
         if self.predict_eps_t:
-            eps_t = xt - x
+            eps_t = (xt - self.alpha[T].sqrt() * x) / (1 - self.alpha[T]).sqrt()
             return xt, eps_t
         return xt, eps
 
@@ -138,7 +138,7 @@ class DDIM(DM):
         t = rand(x.shape[0], device=self.device).reshape(-1, 1)
         xt, eps = self.diffuse(x, t)
         eps_pred = self.forward(xt, t, *conditions)
-        return eps, eps_pred        
+        return eps, eps_pred
 
     def regularize(self, x_batch, w_batch, *c_batch):
         # regularize the denoising steps

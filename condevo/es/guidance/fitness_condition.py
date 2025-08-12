@@ -38,7 +38,7 @@ class FitnessCondition(Condition):
         var_W = charles_instance.fitness.var()
 
         # fitness increase due to genetic variance
-        dW = var_W * 0.5 * randn(num_samples, 1)
+        dW = var_W * 0.5 * randn(num_samples, 1, device=charles_instance.device)
 
         if not self.greedy:
             # sample fitness values as Gaussian noise around the current fitness values

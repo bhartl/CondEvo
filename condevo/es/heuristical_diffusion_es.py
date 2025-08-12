@@ -431,7 +431,7 @@ class HADES:
                 p2 = self.elites[k]
 
             # recombine the two parents' genes via random crossover
-            crossover_indices = np.random.rand(self.num_params) < 0.5
+            crossover_indices = torch.rand(self.num_params, device=self.device) < 0.5
             xt_crossover.append(p1 * crossover_indices + p2 * (~crossover_indices))
 
         return torch.stack(xt_crossover, dim=0)
@@ -499,6 +499,7 @@ class HADES:
             return self.selection_pressure
 
         num_elites = int(self.popsize * self.elite_ratio)
+        fitness = fitness.to(self.device)
         def foo(s):
             s = torch.tensor(s, dtype=torch.float32, device=self.device)
             kwargs = dict(s=s, normalize=True, threshold=self.selection_threshold)

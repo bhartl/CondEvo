@@ -193,8 +193,8 @@ class CHARLES(HADES):
         return self.solutions
 
     def selection(self):
-        x = self.solutions
-        fitness = self.fitness
+        x = self.solutions.to(self.device)
+        fitness = self.fitness.to(self.device)
         if x is not None:
             conditions = self.evaluate_conditions(x, fitness)
             self.buffer.push(x, fitness, *conditions)

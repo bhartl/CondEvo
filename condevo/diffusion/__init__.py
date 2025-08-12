@@ -3,6 +3,7 @@
 from .diffusion_model import DM
 from .ddim import DDIM
 from .rectified_flow import RectFlow
+# from condevo.diffusion.local.energy_matching import EnergyMatching
 
 
 def get_default_model(num_params, num_hidden=32, num_steps=100, dm_cls="RectFlow", num_conditions=0) -> DM:
@@ -23,4 +24,5 @@ def get_default_model(num_params, num_hidden=32, num_steps=100, dm_cls="RectFlow
 __all__ = ['DM',
            'DDIM',
            'RectFlow',
+           # 'EnergyMatching',
            ]

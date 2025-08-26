@@ -104,8 +104,9 @@ def train(experiment: str ="Cartpole",
     agent_filename = experiment.get_agent_filename(diff_instance=diff_instance, es=es_name, timestamp=timestamp)
     os.makedirs(agent_path, exist_ok=True)
 
-    # initialize tensorboard
-    diff_instance.log_dir = os.path.join(agent_path, "runs/run1")  # , ".".join(agent_filename.split(".")[:-1]))
+    if diff_instance is not None:
+        # initialize tensorboard
+        diff_instance.log_dir = os.path.join(agent_path, "runs/run1")  # , ".".join(agent_filename.split(".")[:-1]))
 
     from mindcraft.script import train as train_mindcraft
     world = experiment.get_world()

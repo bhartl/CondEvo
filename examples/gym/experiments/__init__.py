@@ -8,8 +8,6 @@ from .mountain_car import MountainCar
 from .lunar_lander import LunarLander
 from .lunar_lander import LunarLanderContinuous
 
-from .bipedal_walker import BipedalWalker
-
 __all__ = [
     # classic control
     "Cartpole",
@@ -17,5 +15,4 @@ __all__ = [
     # box2d
     "LunarLander",
     "LunarLanderContinuous",
-    "BipedalWalker",
 ]

@@ -67,6 +67,8 @@ class RectFlow(DM):
             t = tt[T]
             v = self(xt, t, *conditions)
             xt = xt + v * dt
+            if self.diff_range_filter:
+                xt = self.diff_clamp(xt)
             if self.noise_level:
                 xt += (dt ** 0.5) * randn_like(xt) * self.noise_level * (1 - t)
 

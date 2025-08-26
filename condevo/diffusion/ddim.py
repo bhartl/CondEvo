@@ -125,14 +125,29 @@ class DDIM(DM):
             z = randn_like(xt)
 
             eps = self(xt, t, *conditions) * self.matthew_factor
-            if self.predict_eps_t:
-                x0_pred = xt - eps
-            else:
-                x0_pred = (xt - (1-self.alpha[T]).sqrt() * eps) / (self.alpha[T].sqrt())
-
+            eps, x0_pred = self.get_clamped_eps_x0(xt, eps, T)
             xt = self.alpha[T-1].sqrt() * x0_pred + (1 - self.alpha[T-1] - s ** 2).sqrt() * eps + s * z
 
         return xt.squeeze(0)
+
+    def get_clamped_eps_x0(self, xt, eps, T):
+        x0 = self.get_predicted_x0(xt, eps, T)
+        if not self.diff_range_filter:
+            return eps, x0
+
+        x0_clipped = self.diff_clamp(x0)
+        eps_clipped = self.get_eps(xt, x0_clipped, T)
+        return eps_clipped, x0_clipped
+
+    def get_predicted_x0(self, xt, eps, T):
+        if self.predict_eps_t:
+            return xt - eps
+        return (xt - (1 - self.alpha[T]).sqrt() * eps) / (self.alpha[T].sqrt())
+
+    def get_eps(self, xt, x0, T):
+        if self.predict_eps_t:
+            return xt - x0
+        return (xt - self.alpha[T].sqrt() * x0) / ((1 - self.alpha[T]).sqrt())
 
     def eval_val_pred(self, x, *conditions):
         t = rand(x.shape[0], device=self.device).reshape(-1, 1)

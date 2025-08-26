@@ -398,6 +398,9 @@ class HADES:
         xt_crossover = []
         for i in range(num_crossover):
             # select two parents either from elites or from all if elite_ratio = 0
+            if isinstance(p, Tensor):
+                p = utils.tensor_to_numpy(p)
+                p = p / p.sum()
             j, k = np.random.choice(np.arange(0, self.num_elite or self.popsize), size=2, p=p, replace=False)
             p1 = self.elites[j]
 

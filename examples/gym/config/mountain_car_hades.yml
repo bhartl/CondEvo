@@ -10,19 +10,10 @@ experiment_config:
     n_episodes: 5
     log_fields: ["reward", "done", "observation"]
     new_model: True
-es: CHARLES
-conditions:
-  x_range_condition:  # see get_x_range_condition in MountainCar environment
-    agg: max          # go greedy for the maximum x range (max - min cart positions across episodes)
-#  fitness_condition:
-#    scale: 200
-#    greedy: true
-#  knn_novelty_condition:
-#    k: 32
-#    weight_by_fitness: false
+es: HADES
 generations: 500
 es_config:
-  popsize: 10
+  popsize: 128
   sigma_init: 1.0
   is_genetic_algorithm: False
   selection_pressure: 8.0            # selection pressure for roulette wheel selection

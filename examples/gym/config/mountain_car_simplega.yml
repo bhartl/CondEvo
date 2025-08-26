@@ -1,0 +1,18 @@
+experiment: MountainCar
+timestamp: true
+experiment_config:
+  agent: "RGRN"
+  agent_kwargs:
+    num_hidden: 4
+    num_layers: 1
+    parameter_scale: 10.0
+  world_kwargs:
+    n_episodes: 5
+    log_fields: ["reward", "done", "observation"]
+    new_model: True
+es: SimpleGA
+generations: 500
+es_config:
+  popsize: 128
+  weight_decay: 0.0001                # L2 weight decay for the parameters of the evolutionary strategy (NOT of the diffusion model)
+  sigma_init: 0.5

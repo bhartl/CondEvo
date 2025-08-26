@@ -22,7 +22,7 @@ conditions:
 #    weight_by_fitness: false
 generations: 500
 es_config:
-  popsize: 10
+  popsize: 128
   sigma_init: 1.0
   is_genetic_algorithm: False
   selection_pressure: 8.0            # selection pressure for roulette wheel selection

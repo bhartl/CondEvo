@@ -32,6 +32,11 @@ CMAES = dict(
     inopts=None,                     # additional options for the CMA-ES optimizer, see `cma.CMAOptions`
 )
 
+MultistartCMA = {k: v for k, v in CMAES.items()}
+""" Default-Configuration for the Multistart-CMA evolutionary strategy. """
+MultistartCMA["num_starts"] = 5      # number of restarts
+MultistartCMA["cls"] = "CMAES"
+
 SimpleGA = dict(
     sigma_init=1.0,                  # initial standard deviation
     sigma_decay=0.999,               # decay of the standard deviation

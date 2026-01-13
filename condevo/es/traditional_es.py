@@ -1,9 +1,10 @@
 """ Classes in this module are based on David Ha's `estools`, and adapted under the MIT licence (2024).
     You can find the original implementation at https://github.com/hardmaru/estool.
 """
-from torch import Tensor, tensor
+from torch import Tensor, tensor, stack, cat
 import numpy as np
 from ..es import utils
+from typing import Union
 
 
 class CMAES:
@@ -597,3 +598,63 @@ class PEPG:
 
     def result(self):  # return best params so far, along with historically best reward, curr reward, sigma
         return (self.best_mu, self.best_reward, self.curr_best_reward, self.sigma)
+
+
+class MultistartES:
+    def __init__(self, cls: Union[str, type]=CMAES, num_starts=1, popsize=256, **kwargs):
+        self.num_starts = num_starts
+        popsizes = [popsize // num_starts for i in range(num_starts)]
+        for i in range(popsize % num_starts):
+            popsizes[i] += 1  # add reminders evenly
+
+        Cls = self._get_cls(cls)
+        self.es = [Cls(popsize=pi, **kwargs) for pi in popsizes]
+
+    def _get_cls(self, cls):
+        if isinstance(cls, type):
+            return cls
+
+        assert cls in globals().keys(), f"cls {cls} not found in globals {globals()}"
+        return globals()[cls]
+
+    def inject(self, solutions=None):
+        if solutions is not None:
+            [es.inject(solutions) for es in self.es]
+
+    def flush(self, solutions):
+        [es.flush(solutions) for es in self.es]
+
+    def rms_stdev(self):
+        [es.rms_stdev() for es in self.es]
+
+    def ask(self):
+        '''returns a list of parameters'''
+        self.solutions = [es.ask() for es in self.es]
+        return cat(self.solutions)
+
+    def tell(self, reward_table_result):
+        solution_slize = [len(s) for s in self.solutions]
+        reward_tables = []
+        for i, s in enumerate(solution_slize):
+            reward_tables.append(reward_table_result[sum(solution_slize[:i]):sum(solution_slize[:i + 1])])
+
+        [es.tell(r) for es, r in zip(self.es, reward_tables)]
+
+    def current_param(self):
+        return [es.current_parma() for es in self.es][self.best_es_id]
+
+    def set_mu(self, mu):
+        return [es.set_mu(mu) for es in self.es]
+
+    def best_param(self):
+        return [es.best_param() for es in self.es][self.best_es_id]
+
+    def result(self):
+        ri = [es.result() for es in self.es] # for every es: (best_param, hist_best_rward, current_reward, sigma)
+        return ri[self.best_es_id]
+
+    @property
+    def best_es_id(self):
+        ri = [es.result() for es in self.es]  # for every es: (best_param, hist_best_rward, current_reward, sigma)
+        hist_best = [b for _, b, _, _ in ri]
+        return np.argmin(hist_best)

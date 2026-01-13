@@ -80,7 +80,7 @@ def run_experiments(conditions="", dst=DST, niter=2, objective="double_dip", ada
         es_config["buffer_size"] = 10
         es_config["sigma_init"] = sigma_init
         es_config["is_genetic_algorithm"] = False  # True
-    
+
     
         kwargs["diff"] = "DDIM"
         kwargs["nn"] = "MLP"
@@ -89,9 +89,15 @@ def run_experiments(conditions="", dst=DST, niter=2, objective="double_dip", ada
                 "num_hidden": 64,
                 "num_layers": 2,
                 "activation": "ReLU",
+                # "time_embedding": 32,
+                # "batch_norm": False,
+                # "layer_norm": True,
         }
         kwargs["es_config"] = es_config
         kwargs["diff_config"] = {"num_steps": 1000, } # "param_range": param_range, "lambda_range": 1e-4}
+        # kwargs["diff_config"]["autoscaling"] = True  # True
+        # kwargs["diff_config"]["sample_uniform"] = True  # True
+        # kwargs["diff_config"]["diff_range"] = param_range  # True
 
     else:
         es_config = {**getattr(configs, es)}
@@ -102,6 +108,9 @@ def run_experiments(conditions="", dst=DST, niter=2, objective="double_dip", ada
         elif es == "SimpleGA":
             #es_config["sigma_decay"] = 1.0
             es_config["forget_best"] = True
+
+        elif es == "MultistartCMA":
+            kwargs["es"] = "MultistartES"
 
         es_config["sigma_init"] = sigma_init
         kwargs["diff"] = None

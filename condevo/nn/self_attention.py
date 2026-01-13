@@ -4,7 +4,7 @@ from typing import Type, Union
 
 
 class SelfAttentionMLP(Module):
-    def __init__(self, num_params: int = 2, num_hidden: int = 32, num_layers: int = 2,
+    def __init__(self, num_params: int = 2, num_hidden: int = 32, num_layers: int = 2, time_embedding: int = 0,
                  activation: Union[Type, str] = ReLU, last_activation: Union[Type, str] = Identity,
                  num_conditions: int = 0, batch_norm: bool = False, dropout: float = 0.0,
                  num_heads: int = 4):
@@ -31,8 +31,11 @@ class SelfAttentionMLP(Module):
         self.batch_norm = batch_norm
         self.dropout = dropout
         self.num_heads = num_heads
+        self.time_embedding = time_embedding
 
-        self.input_dim = self.num_params + 1 + self.num_conditions  # params, time, conditions
+
+        num_time_input = time_embedding or 1
+        self.input_dim = self.num_params + num_time_input + self.num_conditions  # params, time, conditions
         self.output_dim = self.num_params
 
         # Ensure num_hidden is divisible by num_heads for TransformerEncoderLayer
@@ -55,6 +58,7 @@ class SelfAttentionMLP(Module):
         # This is needed because TransformerEncoderLayer expects embed_dim
         # to be the feature dimension for its self-attention and FFN.
         self.input_projection = Linear(self.input_dim, h) if self.input_dim != h else Identity()
+        self.time_projection = Linear(1, self.time_embedding) if self.time_embedding > 1 else Identity()
 
         # 2. Self-Attention Layer (TransformerEncoderLayer for simplicity)
         # We use a single TransformerEncoderLayer which contains both Multi-Head Self-Attention
@@ -108,6 +112,7 @@ class SelfAttentionMLP(Module):
         """
         # Concatenate inputs and conditions
         # Shape: (batch_size, num_params + 1 + num_conditions)
+        t = self.time_projection(t)  # Project time if necessary
         concatenated_input = cat([x, t, *conditions], dim=-1)
 
         # Project to num_hidden dimension

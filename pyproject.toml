@@ -43,6 +43,8 @@ examples = [
     "matplotlib",
     "jupyter",
     "pyyaml",
+    "scikit-learn",
+    "imageio",
 ]
 
 conditional = [

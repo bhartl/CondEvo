@@ -95,8 +95,7 @@ def run_experiments(conditions="", dst=DST, niter=2, objective="double_dip", ada
         }
         kwargs["es_config"] = es_config
         kwargs["diff_config"] = {"num_steps": 1000, } # "param_range": param_range, "lambda_range": 1e-4}
-        # kwargs["diff_config"]["autoscaling"] = True  # True
-        # kwargs["diff_config"]["sample_uniform"] = True  # True
+        # kwargs["diff_config"]["scaler"] = None  # "StandardScaler"
         # kwargs["diff_config"]["diff_range"] = param_range  # True
 
     else:

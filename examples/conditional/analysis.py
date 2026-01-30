@@ -28,47 +28,52 @@ def load_benchmark(es="HADES", objective="rastrigin", run_ids=None, dst=utils.DS
             if not isinstance(run_ids, list):
                 run_ids = [run_ids]
 
-            data = []
-            for run_id in run_ids:
-                run_data = f[f"run_{run_id}"]
-                gen_ids = list(sorted([int(k.replace("gen_", "")) for k in run_data.keys()]))
+            try:
+                data = []
+                print("found runs:", run_ids)
+                for run_id in run_ids:
+                    run_data = f[f"run_{run_id}"]
+                    gen_ids = list(sorted([int(k.replace("gen_", "")) for k in run_data.keys()]))
 
-                # extract attributes
-                run_attrs = run_data.attrs
-                run_dict = {}
-                for k, v in run_attrs.items():
-                    try:
-                        v = json.loads(v)
-                    except:
-                        pass
-                    run_dict[k] = v
+                    # extract attributes
+                    run_attrs = run_data.attrs
+                    run_dict = {}
+                    for k, v in run_attrs.items():
+                        try:
+                            v = json.loads(v)
+                        except:
+                            pass
+                        run_dict[k] = v
 
-                for gen_id in gen_ids:
-                    generation = run_data[f"gen_{gen_id}"]
+                    for gen_id in gen_ids:
+                        generation = run_data[f"gen_{gen_id}"]
 
-                    try:
-                        samples = generation['samples'][()]
-                        fitness = generation['fitness'][()]
+                        try:
+                            samples = generation['samples'][()]
+                            fitness = generation['fitness'][()]
 
-                        item = {
-                            "run": run_id + run_offset,
-                            "gen": gen_id,
-                            "samples": samples,
-                            "fitness": fitness,
-                            **run_dict
-                        }
-                        if 'model_loss' in generation:
-                            model_loss = generation['model_loss'][()]
-                            item['model_loss'] = model_loss
+                            item = {
+                                "run": run_id + run_offset,
+                                "gen": gen_id,
+                                "samples": samples,
+                                "fitness": fitness,
+                                **run_dict
+                            }
+                            if 'model_loss' in generation:
+                                model_loss = generation['model_loss'][()]
+                                item['model_loss'] = model_loss
 
-                        # add generation data and attribute data as data-element for dataframe
-                        data.append(item)
+                            # add generation data and attribute data as data-element for dataframe
+                            data.append(item)
 
-                    except KeyError:
-                        pass
+                        except KeyError:
+                            pass
 
-            run_offset += len(run_ids)
-            h5_data.extend(data)
+                run_offset += len(run_ids)
+                h5_data.extend(data)
+
+            except KeyError:
+                print("no runs found in file", h5_filename)
 
     return pd.DataFrame(h5_data)
 

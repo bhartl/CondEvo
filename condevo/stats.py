@@ -130,7 +130,7 @@ def kl_divergence(p, q, eps=1e-8):
     return kl.sum()
 
 
-def grid_entropy_2d(data, grid_size=101, range_min=-10., range_max=10.):
+def grid_entropy_2d(data, grid_size=101, range_min=-10., range_max=10., differential_entropy=False):
     """
     Calculate the entropy of a set of 2D coordinates.
 
@@ -141,24 +141,29 @@ def grid_entropy_2d(data, grid_size=101, range_min=-10., range_max=10.):
     :return: float, the entropy of the dataset
     """
     # Normalize the data to fit within the specified range
+    d = data.shape[1]
     try:
         data = torch.clip(data, range_min, range_max)
-        grid = torch.zeros((grid_size, grid_size), device=data.device, dtype=data.dtype)
+        grid = torch.zeros((grid_size,) * d, device=data.device, dtype=data.dtype)
         clip = torch.clip
         log = torch.log
     except TypeError:
         data = np.clip(data, range_min, range_max)
-        grid = np.zeros((grid_size, grid_size))
+        grid = np.zeros((grid_size,) * d)
         clip = np.clip
         log = np.log
         
     normalized_data = (data - range_min) / (range_max - range_min)
 
     # Count points in each grid cell
-    indices = (normalized_data * grid_size).astype(int)
-    indices = clip(indices, 0, grid_size - 1)  # Ensure indices are within bounds
-    for idx in indices:
-        grid[tuple(idx)] += 1
+    if isinstance(data, np.ndarray):
+        indices = (normalized_data * grid_size).astype(int)
+        indices = clip(indices, 0, grid_size - 1)  # Ensure indices are within bounds
+        np.add.at(grid, tuple(indices.T), 1)
+    else:
+        indices = (normalized_data * grid_size).long()
+        indices = clip(indices, 0, grid_size - 1)  # Ensure indices are within bounds
+        grid.index_put_(tuple(indices.T), torch.ones(len(indices), device=data.device), accumulate=True)
 
     # Convert counts to probabilities
     probabilities = grid / grid.sum()
@@ -167,38 +172,66 @@ def grid_entropy_2d(data, grid_size=101, range_min=-10., range_max=10.):
     non_zero_probs = probabilities[probabilities > 0]
     entropy = -((non_zero_probs * log(non_zero_probs)).sum())
 
+    if differential_entropy:
+        delta = (range_max - range_min) / grid_size
+        entropy = entropy + d * log(delta)
+
     return entropy
 
 
-def calculate_kl_divergence(data, grid_size=101, range_min=-10., range_max=10.):
+def histogram_probs(x, grid_size=101, range_min=-10., range_max=10.):
+    x = np.asarray(x)
+    assert x.ndim == 2, "x must be (N, d)"
+    d = x.shape[1]
+
+    # Clip and normalize to [0, 1]
+    x = np.clip(x, range_min, range_max)
+    xn = (x - range_min) / (range_max - range_min)
+
+    # Convert to integer bin indices
+    idx = (xn * grid_size).astype(int)
+    idx = np.clip(idx, 0, grid_size - 1)
+
+    # Allocate grid
+    grid = np.zeros((grid_size,) * d, dtype=np.float64)
+
+    # Increment bins
+    np.add.at(grid, tuple(idx.T), 1.0)
+
+    total = grid.sum()
+    if total == 0:
+        raise ValueError("No samples fell inside the grid.")
+
+    return grid / total
+
+
+def kl_divergence_sampled(p_data, q_data=None, grid_size=101, range_min=-10., range_max=10., eps=1e-12):
     """
-    Calculate the KL divergence of a set of 2D coordinates from a uniform distribution.
+    Estimate KL(p || q) from sampled data using histogram binning in N dimensions.
 
-    :param data: np.ndarray, shape (n_samples, 2), the dataset of 2D coordinates
-    :param grid_size: int, the number of grid cells along each dimension
-    :param range_min: float, the minimum value for the grid range
-    :param range_max: float, the maximum value for the grid range
-    :return: float, the KL divergence of the dataset from a uniform distribution
+    :param p_data: np.ndarray, shape (N_p, d). Samples from p (data distribution).
+    :param q_data: np.ndarray or None, shape (N_q, d). Samples from q (reference distribution). If None, q is assumed uniform over the grid.
+    :param grid_size: int, Number of bins per dimension.
+    :param range_min, range_max : float, Bounds for all dimensions.
+    :param eps: float, Numerical stabilizer.
+    :returns: float, Estimated KL(p || q)
     """
-    # Normalize the data to fit within the specified range
-    data = np.clip(data, range_min, range_max)
-    normalized_data = (data - range_min) / (range_max - range_min)
 
-    # Create a grid
-    grid = np.zeros((grid_size, grid_size))
+    p_data = np.asarray(p_data)
+    assert p_data.ndim == 2, "p_data must be (N, d)"
 
-    # Count points in each grid cell
-    indices = (normalized_data * grid_size).astype(int)
-    indices = np.clip(indices, 0, grid_size - 1)  # Ensure indices are within bounds
-    for idx in indices:
-        grid[tuple(idx)] += 1
+    # Estimate p
+    p = histogram_probs(p_data, grid_size=grid_size, range_min=range_min, range_max=range_max)
 
-    # Convert counts to probabilities
-    probabilities = grid / grid.sum()
+    # Estimate q
+    if q_data is None:
+        q = np.full_like(p, 1.0 / p.size)
+    else:
+        q = histogram_probs(q_data, grid_size=grid_size, range_min=range_min, range_max=range_max)
 
-    # Compute KL divergence
-    uniform_prob = 1 / (grid_size * grid_size)
-    non_zero_probs = probabilities[probabilities > 0]
-    kl_divergence = np.sum(non_zero_probs * np.log(non_zero_probs / uniform_prob))
+    # KL(p || q)
+    mask = p > 0
+    p_m = p[mask]
+    q_m = np.maximum(q[mask], eps)
 
-    return kl_divergence
+    return float(np.sum(p_m * np.log(p_m / q_m)))

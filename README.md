@@ -1,10 +1,39 @@
 # Conditional Diffusion Evolution
 
-Introduced in [Heuristically Adaptive Diffusion-Model Evolutionary Strategy](https://arxiv.org/abs/2411.13420).
+Diffusion Models (DMs) and Evolutionary Algorithms (EAs) share a core generative principle: iterative refinement of random initial distributions to produce high-quality solutions. DMs degrade and restore data using Gaussian noise, enabling versatile generation, while EAs optimize numerical parameters through biologically inspired heuristics. Our research integrates these frameworks, employing deep learning-based DMs to enhance EAs across diverse domains. By iteratively refining DMs with heuristically curated databases, we generate better-adapted offspring parameters, achieving efficient convergence toward high-fitness solutions while preserving explorative diversity. DMs augment EAs with deep memory, retaining historical data and exploiting subtle correlations for refined sampling. Classifier-free guidance further enables precise control over evolutionary dynamics, targeting specific genotypical, phenotypical, or population traits. This hybrid approach transforms EAs into adaptive, memory-enhanced frameworks, offering unprecedented flexibility and precision in evolutionary optimization, with broad implications for generative modeling and heuristic search.
 
-The package comprises the following methods:
+![assets/model.pdf](assets/model.png)
+(**A**) A schematic flow-chart of a typical evolutionary algorithm (gray arrows and labels) contrasted with our diffusion model (DM)-based evolutionary optimization (golden arrows and symbols), showing an evolutionary process either utilizing population-based (gray) or an ANN-based DM (golden) as heuristically refined generative model for offspring-genotype sampling. The DM-based EA's generative model learns from heuristic experience by training on an epigenetic joint dataset of genome, fitness, and (potentially) conditional feature data of a particular genotype in its environment. We then utilize the successively refined DM to sample high-quality (high fitness) offspring candidate solutions for a particular environment; via classifier-free-guidance techniques~\cite{ho2021classifierfree}, this generative process can potentially be biased towards desired target traits in the environment on the phenotypic level.
+
+(**B**) Schematics of DM-based evolutionary optimization in an environment with two Gaussian optima at $\mu_\pm=(\pm1,\pm1)$, but conditioning the search dynamics either to a target parameter range $x,y>0$ (red) or $x,y<0$ (blue), or alternate between the two peaks through dynamic conditioning  (green).
+
+(**C**) Schematics of utilizing conditional DM evolution of high-fitness genotypes (low to high fitness color-coded from black through orange to white) that maintains diversity (spread in parameter space).
+
+(**D**) Schematic behavior of DM-based conditionally evolved reinforcement learning (RL)~\cite{sutton1998reinforcement} agents deployed in the cart-pole environment~\cite{barto1983neuronlike} the agents are evolved to maximize fitness (balance the pole), but conditionally sampled to steer the cart to a certain location (here A, B, or C) without changing the reward signal.
+
+---
+
+The package comprises methods from the Heuristically Adaptive Diffusion-Model Evolutionary Strategy (HADES) framework.[^1]
 - [`condevo.es.HADES`](condevo/es/heuristical_diffusion_es.py): Heuristically Adaptive Diffusion-Model Evolutionary Strategy
 - [`condevo.es.CHARLES`](condevo/es/conditional_diffusion_es.py): Conditional, Heuristically-Adaptive ReguLarized Evolutionary Strategy through Diffusion
+
+**Note**: The package is under active development.
+
+---
+
+The method is complementary to our [*Diffusion Evolution* framework](https://github.com/Zhangyanbo/diffevo), which shows the equivalence that *Diffusion models are Evolutionary Algorithms*. [^2]
+
+[^1]: B. Hartl, Y. Zhang, H. Hazan, M. Levin, Heuristically Adaptive Diffusion-Model Evolutionary Strategy, Advanced Science (2025), in press [arxiv:2411.13420](https://arxiv.org/abs/2411.13420)
+
+[^2]: Y. Zhang, B. Hartl, H. Hazan, M. Levin, ICLR (2025), [OpenReview](https://openreview.net/forum?id=xVefsBbG2O), [arxiv:2410.02543](https://arxiv.org/abs/2410.02543)
+
+## Project
+The main package is located in the [condevo](condevo) folder, which comprises 
+- a [diffusion](condevo/diffusion) sub-package, implementing diffusion models (DDIM, RectFlow, VPred, XPred) and related utilities,
+- a [nn](condevo/nn) sub-packages, implementing neural network architectures (MLP, UNet, SelfAttention, ...) forming the predictive backbone of the diffusion models,
+- an [es](condevo/es) sub-package, implementing evolutionary strategies (HADES, CHARLES, CMA-ES, SimpleGA, etc),
+- a [utils](condevo/preprocessing) sub-package, implementing utility functions for data preprocessing, logging, etc.
+- and several utility functions for logging and statistics.
 
 ## Installation
 

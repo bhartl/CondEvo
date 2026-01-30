@@ -185,7 +185,7 @@ class UNet(Module):
             f"UNet(num_params={self.num_params}, channels_down={self.num_hidden}, "
             f"activation={self.activation}, last_activation={self.last_activation}, "
             f"num_conditions={self.num_conditions}, batch_norm={self.batch_norm}, "
-            f"layer_norm={self.layer_norm}, dropout={self.dropout})"
+            f"layer_norm={self.layer_norm}, dropout={self.dropout}, time_embedding={self.time_embedding})"
         )
 
 

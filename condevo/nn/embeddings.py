@@ -6,12 +6,18 @@ class SinusoidalTimeEmbedding(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
-        half = dim // 2
-        self.register_buffer('freqs', exp(
-            linspace(math.log(1e-4), math.log(1.0), steps=half)
-        ), persistent=False)
-        self.proj = nn.Sequential(nn.Linear(dim, dim), nn.SiLU(),
-                                  nn.Linear(dim, dim))
+        self.register_buffer(
+            'freqs',
+            exp(linspace(math.log(1e-4), math.log(1.0), steps=dim // 2)),
+            persistent=False,
+        )
+
+        self.proj = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.SiLU(),
+            nn.Linear(dim, dim),
+        )
+
     def forward(self, t):  # t: (B,) in [0, T-1]
         # scale to [0,1]
         t = t.float().unsqueeze(1)

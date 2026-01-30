@@ -33,7 +33,6 @@ class SelfAttentionMLP(Module):
         self.num_heads = num_heads
         self.time_embedding = time_embedding
 
-
         num_time_input = time_embedding or 1
         self.input_dim = self.num_params + num_time_input + self.num_conditions  # params, time, conditions
         self.output_dim = self.num_params
@@ -145,43 +144,3 @@ class SelfAttentionMLP(Module):
                f"num_layers={self.num_layers}, activation={self.activation.__name__}, " \
                f"last_activation={self.last_activation.__name__}, num_conditions={self.num_conditions}, " \
                f"batch_norm={self.batch_norm}, dropout={self.dropout}, num_heads={self.num_heads})"
-
-
-# Example Usage:
-if __name__ == "__main__":
-    # Basic test
-    import torch
-    model = SelfAttentionMLP(num_params=2, num_hidden=64, num_layers=3, num_conditions=0, num_heads=8, dropout=0.1)
-    print(model)
-
-    x_input = torch.randn(16, 2)  # Batch size 16, 2 parameters
-    t_input = torch.randn(16, 1)  # Batch size 16, 1 time value
-
-    output = model(x_input, t_input)
-    print("Output shape (no conditions):", output.shape)  # Expected: torch.Size([16, 2])
-
-    # Test with conditions
-    model_with_cond = SelfAttentionMLP(num_params=3, num_hidden=128, num_layers=2, num_conditions=10, num_heads=8,
-                                       batch_norm=True)
-    print("\n", model_with_cond)
-
-    x_input_cond = torch.randn(8, 3)
-    t_input_cond = torch.randn(8, 1)
-    cond1 = torch.randn(8, 5)
-    cond2 = torch.randn(8, 5)  # Two condition tensors summing to 10 features
-
-    output_cond = model_with_cond(x_input_cond, t_input_cond, cond1, cond2)
-    print("Output shape (with conditions):", output_cond.shape)  # Expected: torch.Size([8, 3])
-
-    # Test edge case: num_layers=1 (attention block effectively is the hidden layer)
-    model_one_layer = SelfAttentionMLP(num_params=2, num_hidden=32, num_layers=1, num_conditions=0, num_heads=4)
-    print("\n", model_one_layer)
-    output_one_layer = model_one_layer(torch.randn(4, 2), torch.randn(4, 1))
-    print("Output shape (num_layers=1):", output_one_layer.shape)
-
-    # Test with input_dim == num_hidden (input_projection becomes Identity)
-    model_identity_proj = SelfAttentionMLP(num_params=2, num_hidden=3, num_layers=2, num_conditions=0,
-                                           num_heads=3)  # input_dim = 2+1 = 3
-    print("\n", model_identity_proj)
-    output_identity_proj = model_identity_proj(torch.randn(4, 2), torch.randn(4, 1))
-    print("Output shape (input_dim=num_hidden):", output_identity_proj.shape)

@@ -222,7 +222,7 @@ class CHARLES(HADES):
             # select samples from buffer based on roulette wheel selection
             selected_genotypes = torch.multinomial(weights_dataset.flatten(), len(x), replacement=True)
             x_dataset = x_dataset[selected_genotypes]
-            conditions = tuple(c[selected_genotypes] for c in conditions)
+            conditions = tuple(c[selected_genotypes] for c in conditions) if conditions else ()
             weights_dataset = None  # disable weights for DM training
 
         else:
@@ -247,6 +247,9 @@ class CHARLES(HADES):
         return self.condition_values
 
     def transform_conditions(self, values):
+        """ Transform the conditions for input to the diffusion model."""
+        if values is None:
+            return ()
         return [c.transform(charles_instance=self, values=v) for c, v in zip(self.conditions, values)]
 
     @property

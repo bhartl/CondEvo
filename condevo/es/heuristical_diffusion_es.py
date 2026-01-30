@@ -469,12 +469,15 @@ class HADES:
             # add random Gaussian noise to the samples
             random_indices = torch.rand(samples.shape[0]) < self.random_mutation_ratio
             for i in torch.where(random_indices)[0]:
-                try:
-                    std = torch.maximum(self.model.param_std.flatten(), tensor(self.sigma_init, dtype=samples.dtype, device=samples.device))
-                except AttributeError:
-                    std = tensor(max([self.model.param_std, self.sigma_init]), dtype=samples.dtype, device=samples.device)
+                std = self.model.scaler.get_spread()
+                if std is None:
+                    std = self.sigma_init
+                else:
+                    # per-gene scale from model scaler
+                    std = std.clamp_min(self.sigma_init)
+                    std = std.flatten()
 
-                random_noise = (rand(self.num_params, device=self.device) - 0.5) * std * 3.
+                random_noise = (randn(self.num_params, device=self.device) - 0.5) * std * 3.
                 samples[i, :] += random_noise
 
             # clip the samples to the parameter range according to the diff_range policy of the DM

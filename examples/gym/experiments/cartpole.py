@@ -58,8 +58,8 @@ class PositionCondition(Condition):
         min_dist = torch.min(torch.abs(self.evaluation - self.target))
         self.sampling = self.target + torch.randn(num_samples) * torch.sqrt(min_dist)
 
-        print(self.label, "evaluation:", self.evaluation.min(), self.evaluation.mean(), self.evaluation.max())
-        print(self.label, "sampling  :", self.sampling.min(), self.sampling.mean(), self.sampling.max())
+        print(self.label, "evaluation (min, mean(STD), max):", self.evaluation.min().item(), self.evaluation.mean().item(), "(+-", self.evaluation.std().item(), ")", self.evaluation.max().item())
+        print(self.label, "sampling   (min, mean(STD), max):", self.sampling.min().item(), self.sampling.mean().item(), "(+-", self.sampling.std().item(), ")", self.sampling.max().item())
         return self.sampling
 
     def __repr__(self):

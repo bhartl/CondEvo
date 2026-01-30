@@ -34,11 +34,9 @@ es_config:
     pop_type: quality  # diversity
 diff: DDIM
 diff_config:
-  num_steps: 1000
-  noise_level: 0.05
-  diff_range: 10
-  sample_uniform: False
-  autoscaling: True
+  num_steps:   500
+  noise_level: 1.0
+  diff_range:  3.0
 nn: MLP
 nn_config:
   num_hidden: 64

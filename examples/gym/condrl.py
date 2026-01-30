@@ -252,6 +252,7 @@ def demo(experiment: str ="Cartpole", experiment_config: str = "DEFAULT",):
 
 
 def run(config, method="train", timestamp=None):
+    """ The `run` script in `condrl.py` loads the provided `config` file, and forwards the loaded dictionary as kwargs to the specified `method` (again implemented in `condrl.py`, e.g., `train`, `rollout`, etc). """
     config = utils.load_file(config)
     method = globals()[method]
     if timestamp:

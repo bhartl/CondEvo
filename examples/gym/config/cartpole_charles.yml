@@ -25,7 +25,7 @@ es_config:
   mutation_rate: 0.05                # mutation rate after crossover and sampling
   unbiased_mutation_ratio: 0.25      # ratio of the population to perform unbiased mutation (if genetic algorithm, otherwise ignored)
   readaptation: False                # whether to use mutation adaptation (denoising steps) or not. Only valid for `HADES` and `CHARLES` evolutionary strategies.
-  forget_best: False                 # whether to forget the best solution, or keep the elites for the next generation
+  forget_best: True                  # whether to forget the best solution, or keep the elites for the next generation
   weight_decay: 0.001                # L2 weight decay for the parameters of the evolutionary strategy (NOT of the diffusion model)
   diff_optim: "Adam"                 # DM: optimizer for training the diffusion model
   diff_lr: 0.01                      # DM: learning rate for training the diffusion model
@@ -38,14 +38,13 @@ es_config:
     pop_type: quality  # diversity
 diff: DDIM
 diff_config:
-  num_steps: 1000
-  noise_level: 0.05
-  diff_range: 100
-  sample_uniform: False
-  autoscaling: False
+  num_steps:   500
+  noise_level: 1.0
+  diff_range:  3.0
+  alpha_schedule: cosine_nichol
 nn: MLP
 nn_config:
-  num_hidden: 64
+  num_hidden: 128
   num_layers: 2
   activation: ReLU
-  batch_norm: True
+  layer_norm: True

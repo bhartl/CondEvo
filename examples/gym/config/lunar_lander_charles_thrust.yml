@@ -43,8 +43,6 @@ diff_config:
   num_steps: 500
   noise_level: 0.05
   diff_range: 10
-  sample_uniform: False
-  autoscaling: False
 nn: MLP
 nn_config:
   num_hidden: 96

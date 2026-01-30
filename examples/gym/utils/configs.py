@@ -93,6 +93,9 @@ DDIM = dict(
 )
 
 
+VPred = {k: v for k, v in DDIM.items()}
+XPred = {k: v for k, v in DDIM.items()}
+
 RectFlow = dict(
     num_steps=100,
 )
@@ -102,4 +105,9 @@ MLP = dict(
     num_hidden=24,
     num_layers=3,
     activation="LeakyReLU",
+)
+
+UNet = dict(
+    num_hidden=[24, 12,],
+    activation="LeakyReLU,"
 )

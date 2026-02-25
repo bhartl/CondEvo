@@ -60,8 +60,6 @@ class TestDDIMSchedules(unittest.TestCase):
             alpha_schedule=schedule,
             diff_range=None,
             diff_range_filter=False,
-            autoscaling=False,
-            sample_uniform=False,
             clip_gradients=None,
         ).to(self.device)
         return model

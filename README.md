@@ -23,7 +23,7 @@ The package comprises methods from the Heuristically Adaptive Diffusion-Model Ev
 
 The method is complementary to our [*Diffusion Evolution* framework](https://github.com/Zhangyanbo/diffevo), which shows the equivalence that *Diffusion models are Evolutionary Algorithms*. [^2]
 
-[^1]: B. Hartl, Y. Zhang, H. Hazan, M. Levin, Heuristically Adaptive Diffusion-Model Evolutionary Strategy, Advanced Science (2025), in press [arxiv:2411.13420](https://arxiv.org/abs/2411.13420)
+[^1]: B. Hartl, Y. Zhang, H. Hazan, M. Levin, Heuristically Adaptive Diffusion-Model Evolutionary Strategy, Advanced Science, in press (2026), DOI [10.1002/advs.202511537](https://doi.org/10.1002/advs.202511537), [arxiv:2411.13420](https://arxiv.org/abs/2411.13420) (2024)
 
 [^2]: Y. Zhang, B. Hartl, H. Hazan, M. Levin, ICLR (2025), [OpenReview](https://openreview.net/forum?id=xVefsBbG2O), [arxiv:2410.02543](https://arxiv.org/abs/2410.02543)
 
@@ -65,15 +65,13 @@ see the [examples](examples) directory for example usage of the methods.
 ## Citation
 If you use this code in your research, please cite the following paper:
 ```bibtex
-@misc{hartl2024heuristicallyadaptivediffusionmodelevolutionary,
+@article{Hartl2024HADES,
       title={Heuristically Adaptive Diffusion-Model Evolutionary Strategy}, 
       author={Benedikt Hartl and Yanbo Zhang and Hananel Hazan and Michael Levin},
-      year={2024},
-      eprint={2411.13420},
-      archivePrefix={arXiv},
-      primaryClass={cs.NE},
-      url={https://arxiv.org/abs/2411.13420}, 
-      note = {Code available at \url{https://github.com/bhartl/condevo}},
+      journal={Advanced Science, in press}
+      doi={10.1002/advs.202511537},
+      year={2026},
+      note = {Code available at \url{https://github.com/bhartl/condevo}; Preprinted as arxiv:2411.13420 (2024)},
 }
 ```
 

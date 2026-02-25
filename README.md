@@ -68,7 +68,7 @@ If you use this code in your research, please cite the following paper:
 @article{Hartl2024HADES,
       title={Heuristically Adaptive Diffusion-Model Evolutionary Strategy}, 
       author={Benedikt Hartl and Yanbo Zhang and Hananel Hazan and Michael Levin},
-      journal={Advanced Science, in press}
+      journal={Advanced Science, in press},
       doi={10.1002/advs.202511537},
       year={2026},
       note = {Code available at \url{https://github.com/bhartl/condevo}; Preprinted as arxiv:2411.13420 (2024)},

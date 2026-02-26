@@ -17,8 +17,10 @@ Diffusion models (DMs) provide a model-free approach for learning denoising-base
 Here, we introduce a paradigm shift by sustaining and evolving a heuristic population that is sampled across successive generations via a heuristically refined DM. 
  This model is constantly refined - i.e., trained “online” - on a successively acquired dataset buffer containing elite solutions of previous generations that have been sampled by prior versions of the DM. In training the DM, we notably weight high-fitness data more heavily compared to low-fitness genotypes using a fitness weighting function. This approach increases the probability of sampling high-quality data while still maintaining diversity in the generative process.
 
-Intriguingly, with DMs, we can apply techniques such as classifier-free guidance to condition the generation process. This allows us to implement an evolutionary optimizer whose search dynamics in parameter-space, fitness-space, or phenotypic-space can be controlled. 
-By training the DM with additional information which numerically quantifies certain qualities or traits of genotypes $g_i$ in their respective environments, the DM learns to associate elements in the parameter (or any other) space with corresponding features $c_i = c(g_i)$.
+Intriguingly, with DMs, we can apply techniques such as **classifier-free guidance to condition the generation process**. This allows us to implement an evolutionary optimizer whose search dynamics in parameter-space, fitness-space, or phenotypic-space can be controlled. 
+By training the DM with additional information which numerically quantifies certain qualities or traits of genotypes $g_i\equiv x$ in their respective environments, the DM learns to associate elements in the parameter (or any other) space with corresponding features $c_i = c(g_i)$.
+
+![conditional_evolution_examples](assets/charles.png)
 
 Technically, this is achieved by extending the input of the DM’s ANN as $ϵ_θ(x_t, t) → ϵ_θ(x_t, t, c(x_t))$. The function $c(·)$ is a custom, not necessarily differentiable, vector-valued classifier function or a measurement of a trait of the data point $x_0$, or genotype $g$, evaluated in the parameter space, fitness space, or even phenotype space.
 
@@ -29,6 +31,6 @@ In our context, we propose using conditional sampling to gain exceptional contro
 
 We consider this CHARLES-D approach as a “Talk to your Optimizer” application [^1].
 
-[^1]: B. Hartl, Y. Zhang, H. Hazan, M. Levin, Heuristically Adaptive Diffusion-Model Evolutionary Strategy, Advanced Science (2025), in press [arxiv:2411.13420](https://arxiv.org/abs/2411.13420)
+[^1]: B. Hartl, Y. Zhang, H. Hazan, M. Levin, Heuristically Adaptive Diffusion-Model Evolutionary Strategy, Advanced Science, (2026) in press, DOI [10.1002/advs.202511537](https://doi.org/10.1002/advs.202511537), [arxiv:2411.13420](https://arxiv.org/abs/2411.13420) (2024)
 
 [^2]: Y. Zhang, B. Hartl, H. Hazan, M. Levin, ICLR (2025), [OpenReview](https://openreview.net/forum?id=xVefsBbG2O), [arxiv:2410.02543](https://arxiv.org/abs/2410.02543)

@@ -1,5 +1,13 @@
 # Conditional Diffusion Evolution
 
+The package comprises methods from the Heuristically Adaptive Diffusion-Model Evolutionary Strategy (HADES) framework.[^1]
+- [`condevo.es.HADES`](condevo/es/heuristical_diffusion_es.py): Heuristically Adaptive Diffusion-Model Evolutionary Strategy
+- [`condevo.es.CHARLES`](condevo/es/conditional_diffusion_es.py): Conditional, Heuristically-Adaptive ReguLarized Evolutionary Strategy through Diffusion
+
+**Note**: The package is under active development.
+
+---
+
 Diffusion Models (DMs) and Evolutionary Algorithms (EAs) share a core generative principle: iterative refinement of random initial distributions to produce high-quality solutions. DMs degrade and restore data using Gaussian noise, enabling versatile generation, while EAs optimize numerical parameters through biologically inspired heuristics. Our research integrates these frameworks, employing deep learning-based DMs to enhance EAs across diverse domains. By iteratively refining DMs with heuristically curated databases, we generate better-adapted offspring parameters, achieving efficient convergence toward high-fitness solutions while preserving explorative diversity. DMs augment EAs with deep memory, retaining historical data and exploiting subtle correlations for refined sampling. Classifier-free guidance further enables precise control over evolutionary dynamics, targeting specific genotypical, phenotypical, or population traits. This hybrid approach transforms EAs into adaptive, memory-enhanced frameworks, offering unprecedented flexibility and precision in evolutionary optimization, with broad implications for generative modeling and heuristic search.
 
 ![assets/model.pdf](assets/model.png)
@@ -13,17 +21,9 @@ Diffusion Models (DMs) and Evolutionary Algorithms (EAs) share a core generative
 
 ---
 
-The package comprises methods from the Heuristically Adaptive Diffusion-Model Evolutionary Strategy (HADES) framework.[^1]
-- [`condevo.es.HADES`](condevo/es/heuristical_diffusion_es.py): Heuristically Adaptive Diffusion-Model Evolutionary Strategy
-- [`condevo.es.CHARLES`](condevo/es/conditional_diffusion_es.py): Conditional, Heuristically-Adaptive ReguLarized Evolutionary Strategy through Diffusion
-
-**Note**: The package is under active development.
-
----
-
 The method is complementary to our [*Diffusion Evolution* framework](https://github.com/Zhangyanbo/diffevo), which shows the equivalence that *Diffusion models are Evolutionary Algorithms*. [^2]
 
-[^1]: B. Hartl, Y. Zhang, H. Hazan, M. Levin, Heuristically Adaptive Diffusion-Model Evolutionary Strategy, Advanced Science, in press (2026), DOI [10.1002/advs.202511537](https://doi.org/10.1002/advs.202511537), [arxiv:2411.13420](https://arxiv.org/abs/2411.13420) (2024)
+[^1]: B. Hartl, Y. Zhang, H. Hazan, M. Levin, Heuristically Adaptive Diffusion-Model Evolutionary Strategy, Advanced Science, (2026) in press, DOI [10.1002/advs.202511537](https://doi.org/10.1002/advs.202511537), [arxiv:2411.13420](https://arxiv.org/abs/2411.13420) (2024)
 
 [^2]: Y. Zhang, B. Hartl, H. Hazan, M. Levin, ICLR (2025), [OpenReview](https://openreview.net/forum?id=xVefsBbG2O), [arxiv:2410.02543](https://arxiv.org/abs/2410.02543)
 

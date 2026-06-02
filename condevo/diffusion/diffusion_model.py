@@ -15,7 +15,8 @@ class DM(Module):
     def __init__(self, nn, num_steps=100,
                  epsilon=1e-8, log_dir="",
                  scaler=None, diff_range=None, diff_range_filter=True,
-                 lambda_range=0., clip_gradients=None, cfg_scale: float = 0.0,
+                 lambda_range=0., clip_gradients=None,
+                 cfg_scale: float = 0.0, cfg_drop_rate: float = 0.0,
                  ):
         """ Initialize the Diffusion Model
 
@@ -38,7 +39,7 @@ class DM(Module):
         :param clip_gradients: bool or float, Whether to clip the gradients during training to avoid exploding gradients.
                                If float, the value is used as the max norm for clipping. Defaults to None (no clipping).
         :param cfg_scale: float, Classifier-free guidance scale for conditional generation. Defaults to 1.0 (no guidance).
-
+        :param cfg_drop_rate: float, Dropout rate for classifier-free guidance during training. Defaults to 0.0 (no dropout).
         """
         super(DM, self).__init__()
         self.num_steps = num_steps
@@ -56,6 +57,7 @@ class DM(Module):
         self.clip_gradients = clip_gradients
 
         self.cfg_scale = cfg_scale
+        self.cfg_drop_rate = cfg_drop_rate
 
         self._logger = None
         self._log_dir = log_dir
@@ -160,6 +162,24 @@ class DM(Module):
 
         return tuple(torch.zeros_like(c) for c in conditions)
 
+    def apply_drop_conditions(self, *conditions):
+        """ drop some conditions according to `cfg_drop_rate`, to allow the model to learn null conditions """
+        if not self.trainingor or len(conditions) == 0 or self.cfg_drop_rate <= 0.0:
+            return conditions
+
+        null_conditions = self.get_null_conditions(*conditions)
+
+        B = conditions[0].shape[0]
+        drop = torch.rand(B, device=conditions[0].device) < self.cfg_drop_rate
+
+        out = []
+        for c, c_null in zip(conditions, null_conditions):
+            shape = [B] + [1] * (c.ndim - 1)
+            drop_view = drop.view(*shape)
+            out.append(torch.where(drop_view, c_null, c))
+
+        return tuple(out)
+
     def forward(self, x, t, *conditions):
         """Predict the noise `eps` with given `x` and `t`, `t` [0,1] represents the diffusion time step,
            where `t==0` is the data state (denoised) and `t==1` is the fully noisy state. """
@@ -171,12 +191,8 @@ class DM(Module):
             return self.nn(x, t, *conditions)
 
         eps_c = self.nn(x, t, *conditions)
-
-        null_conds = self.get_null_conditions(*conditions)
-        eps_u = self.nn(x, t, *null_conds)
-
-        w = self.cfg_scale
-        return eps_u + w * (eps_c - eps_u)
+        eps_u = self.nn(x, t, *self.get_null_conditions(*conditions))
+        return eps_u + self.cfg_scale * (eps_c - eps_u)
 
     def sample_batch(self, xt, *conditions, t_start=0) -> Tensor:
         """" sample batch of data points, starting from xt ( xt.shape = (num_samples, dim) ) at time step t_start """
@@ -308,6 +324,9 @@ class DM(Module):
 
         return x_clamped
 
+    def can_train(self, buffer=None, **kwargs) -> bool:
+        return True
+
     def fit(self, x, *conditions, weights=None, optimizer: Union[str, type] = optim.Adam, max_epoch=100, lr=1e-3,
             weight_decay=1e-5, batch_size=32, scheduler="cosine"):
         """ Train the diffusion model to the given data.
@@ -391,6 +410,7 @@ class DM(Module):
             for x_batch, *c_batch, w_batch in training_dataloader:
                 x_batch = x_batch.to(device)
                 c_batch = [c.to(device) for c in c_batch]
+                c_batch = self.apply_drop_conditions(*c_batch)
                 w_batch = w_batch.to(device)
                 optimizer.zero_grad()
 
@@ -398,13 +418,11 @@ class DM(Module):
                 loss = loss_function(v, v_pred) * w_batch
                 reg_loss = self.regularize(x_batch, w_batch, *c_batch)
                 loss = (loss + reg_loss).mean()
-
+                epoch_loss = epoch_loss + loss.item()
+                loss.backward()
                 if self.clip_gradients:
                     torch.nn.utils.clip_grad_norm_(self.parameters(), grad_clip_value)
 
-                epoch_loss = epoch_loss + loss.item()
-
-                loss.backward()
                 optimizer.step()
                 num_updates += 1
 

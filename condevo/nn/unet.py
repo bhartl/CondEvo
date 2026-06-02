@@ -152,6 +152,8 @@ class UNet(Module):
         if self.time_embedding > 0:
             from .embeddings import SinusoidalTimeEmbedding
             self.time_embed = SinusoidalTimeEmbedding(self.time_embedding)
+        else:
+            self.time_embed = None
 
         return self.encoder, self.decoder, self.out
 

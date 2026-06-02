@@ -1,4 +1,4 @@
-from torch import rand, no_grad, full, randn_like
+from torch import rand, no_grad, full, randn_like, tensor, distributions
 from ..diffusion import DDIM
 
 
@@ -66,6 +66,10 @@ class XPred(DDIM):
         return eps, x0_pred
 
     def eval_val_pred(self, x, *conditions):
+        # B = x.shape[0]
+        # dist = distributions.Beta(tensor([0.7], device=x.device),
+        #                           tensor([1.0], device=x.device))
+        # t = dist.sample((B,)).view(B, 1)
         t = rand(x.shape[0], device=x.device).reshape(-1, 1)
         xt, _eps = self.diffuse(x, t)
         x0_pred = self(xt, t, *conditions)

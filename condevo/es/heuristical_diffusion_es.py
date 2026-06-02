@@ -343,13 +343,8 @@ class HADES:
 
         parent_dataset, survival_weights = self.selection()
         if not (self._asked + 1) % self.training_interval:
-            self.loss = self.train_model(dataset=parent_dataset, weights=survival_weights)
-
-            # import matplotlib.pyplot as plt
-            # plt.plot(self.loss)
-            # plt.xlabel("Epochs")
-            # plt.ylabel("Loss")
-            # plt.show()
+            if self.model.can_train(buffer=self.buffer):
+                self.loss = self.train_model(dataset=parent_dataset, weights=survival_weights)
 
         self._asked += 1
         return self.loss

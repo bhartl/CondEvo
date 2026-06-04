@@ -1,5 +1,5 @@
 from torch import Tensor, empty, no_grad
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 from .scaler import Scaler
 
 
@@ -48,12 +48,20 @@ class StandardScaler(Scaler):
     def transform(self, x: Tensor) -> Tensor:
         if not self.is_fitted:
             return x
-        return (x - self.mean) / self.std
+
+        mean = self.mean.to(device=x.device, dtype=x.dtype)
+        std = self.std.to(device=x.device, dtype=x.dtype)
+
+        return (x - mean) / std
 
     def inverse_transform(self, z: Tensor) -> Tensor:
         if not self.is_fitted:
             return z
-        return z * self.std + self.mean
+
+        mean = self.mean.to(device=z.device, dtype=z.dtype)
+        std = self.std.to(device=z.device, dtype=z.dtype)
+
+        return z * std + mean
 
     def get_spread(self):
         if not self.is_fitted:

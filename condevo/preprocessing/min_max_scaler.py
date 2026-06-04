@@ -61,8 +61,11 @@ class MinMaxScaler(Scaler):
         if not self.is_fitted:
             return x
 
-        denom = (self.max - self.min).clamp_min(self.eps)
-        z01 = (x - self.min) / denom  # [0,1] (approximately, may exceed if x outside fit range)
+        x_min = self.min.to(device=x.device, dtype=x.dtype)
+        x_max = self.max.to(device=x.device, dtype=x.dtype)
+
+        denom = (x_max - x_min).clamp_min(self.eps)
+        z01 = (x - x_min) / denom
 
         return z01 * (self.hi - self.lo) + self.lo
 
@@ -70,9 +73,13 @@ class MinMaxScaler(Scaler):
         if not self.is_fitted:
             return z
 
+        x_min = self.min.to(device=z.device, dtype=z.dtype)
+        x_max = self.max.to(device=z.device, dtype=z.dtype)
+
         z01 = (z - self.lo) / (self.hi - self.lo)
-        denom = (self.max - self.min).clamp_min(self.eps)
-        return z01 * denom + self.min
+        denom = (x_max - x_min).clamp_min(self.eps)
+
+        return z01 * denom + x_min
 
     def get_spread(self):
         """
@@ -80,4 +87,5 @@ class MinMaxScaler(Scaler):
         """
         if not self.is_fitted:
             return None
-        return (self.max - self.min)
+
+        return self.max - self.min

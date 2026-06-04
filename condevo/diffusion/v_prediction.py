@@ -67,7 +67,7 @@ class VPred(DDIM):
         """Range-regularization using x0 reconstructed from v_pred."""
         if self.diff_range is not None and self.lambda_range:
             t = torch.rand(x_batch.shape[0], device=self.device, dtype=x_batch.dtype).reshape(-1, 1)
-            T = (t * (self.num_steps - 1)).long()
+            T = self._step_continuous_to_discrete(t)
 
             xt, _ = self.diffuse(x_batch, t)
             v_pred = self(xt, t, *c_batch)

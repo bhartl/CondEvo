@@ -72,7 +72,7 @@ class VPred(DDIM):
             xt, _ = self.diffuse(x_batch, t)
             v_pred = self(xt, t, *c_batch)
 
-            x0_direct = self.get_predicted_x0(xt, v_pred, T)
+            x0_direct = self.get_x0(xt, v_pred, T)
             x0_direct = self.scaler.inverse_transform(x0_direct)
             return self.lambda_range * self.exceeds_diff_range(x0_direct)[:, None]
 

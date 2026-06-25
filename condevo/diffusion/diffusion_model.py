@@ -164,7 +164,7 @@ class DM(Module):
 
     def apply_drop_conditions(self, *conditions):
         """ drop some conditions according to `cfg_drop_rate`, to allow the model to learn null conditions """
-        if not self.trainingor or len(conditions) == 0 or self.cfg_drop_rate <= 0.0:
+        if not self.training or len(conditions) == 0 or self.cfg_drop_rate <= 0.0:
             return conditions
 
         null_conditions = self.get_null_conditions(*conditions)
